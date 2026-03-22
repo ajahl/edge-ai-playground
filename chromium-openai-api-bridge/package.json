@@ -1,0 +1,22 @@
+{
+  "name": "chromium-openai-api-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k \"pnpm run dev:renderer\" \"pnpm run dev:server\"",
+    "dev:renderer": "vite --port 5175",
+    "dev:server": "wait-on tcp:5175 && node server.mjs",
+    "build": "vite build",
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "@mlc-ai/web-llm": "0.2.82",
+    "playwright-core": "^1.57.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "vite": "^8.0.1",
+    "wait-on": "^9.0.4"
+  }
+}
