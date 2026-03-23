@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WebGPU LLM Service</title>
+    <script>
+      webLLMGlobal = {};
+    </script>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: "SF Mono", "Monaco", monospace;
+        background: #f5efe4;
+        color: #1d1d1d;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(circle at top left, #bdff8a, transparent 35%),
+          linear-gradient(180deg, #ebf8ea 0%, #e9efcf 100%);
+      }
+
+      main {
+        max-width: 780px;
+        margin: 0 auto;
+        padding: 28px 20px 40px;
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 2rem;
+      }
+
+      p,
+      label,
+      button,
+      textarea,
+      pre {
+        font-size: 0.95rem;
+        line-height: 1.5;
+      }
+
+      .card {
+        margin-top: 18px;
+        padding: 16px;
+        border: 1px solid #1d1d1d;
+        border-radius: 12px;
+        background: rgba(255, 252, 247, 0.86);
+        box-shadow: 8px 8px 0 #1d1d1d;
+      }
+
+      textarea,
+      pre {
+        width: 100%;
+        box-sizing: border-box;
+        border: 1px solid #1d1d1d;
+        border-radius: 10px;
+        padding: 12px;
+        background: #fffdf9;
+      }
+
+      textarea {
+        min-height: 120px;
+        resize: vertical;
+      }
+
+      code {
+        background: rgba(29, 29, 29, 0.08);
+        padding: 2px 6px;
+        border-radius: 6px;
+      }
+
+      .controls {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-top: 12px;
+      }
+
+      select,
+      button {
+        font: inherit;
+        color: inherit;
+        border: 1px solid #1d1d1d;
+        border-radius: 8px;
+        background: #fffaf2;
+        padding: 8px 10px;
+      }
+
+      select {
+        min-width: 320px;
+        max-width: 100%;
+      }
+
+      button {
+        cursor: pointer;
+        box-shadow: 4px 4px 0 #1d1d1d;
+      }
+
+      button:disabled {
+        cursor: progress;
+        opacity: 0.7;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>WebGPU LLM Service</h1>
+
+      <section class="card">
+        <div>Service worker: <span id="sw-status">starting</span></div>
+        <div>Model: <span id="model-status">not loaded</span></div>
+        <div>Progress: <span id="progress-status">idle</span></div>
+        <div>Storage used: <span id="storage-usage">checking...</span></div>
+        <div class="controls">
+          <label for="model-select">Model</label>
+          <select id="model-select"></select>
+          <button id="load-model-button" type="button">Load Selected Model</button>
+          <button id="clear-storage-button" type="button">Clear Model Storage</button>
+          <button id="refresh-storage-button" type="button">Refresh Storage</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <label for="prompt">Prompt</label>
+        <textarea id="prompt">Write a short haiku about local-first AI.</textarea>
+        <button id="run-button">POST /v1/chat/completions</button>
+      </section>
+
+      <section class="card">
+        <div>Response</div>
+        <pre id="response-output">Waiting for request.</pre>
+      </section>
+
+      <section class="card">
+        <div>Call it from this page or any same-origin page on this server:</div>
+        <pre>const response = await fetch("/v1/chat/completions", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    model: "Qwen2.5-Coder-3B-Instruct-q4f16_1-MLC",
+    messages: [{ role: "user", content: "Hello!" }]
+  })
+});</pre>
+      </section>
+
+      <script type="module" src="/src/main.ts"></script>
+    </main>
+  </body>
+</html>
