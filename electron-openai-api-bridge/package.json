@@ -1,0 +1,23 @@
+{
+  "name": "webllm-openai-electron",
+  "version": "0.1.0",
+  "private": true,
+  "main": "electron/main.cjs",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k \"pnpm run dev:renderer\" \"pnpm run dev:electron\"",
+    "dev:renderer": "vite --port 5174",
+    "dev:electron": "wait-on tcp:5174 && electron .",
+    "build": "vite build",
+    "start": "electron ."
+  },
+  "dependencies": {
+    "@mlc-ai/web-llm": "0.2.82",
+    "electron": "^41.0.3"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "vite": "^8.0.1",
+    "wait-on": "^9.0.4"
+  }
+}
