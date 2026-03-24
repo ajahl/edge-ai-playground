@@ -1,10 +1,11 @@
 # Edge AI Playground
 
-This workspace contains three WebGPU/WebLLM service variants with different runtime shapes:
+This workspace contains four WebGPU/WebLLM variants with different runtime shapes:
 
 - [chromium-openai-api-bridge](./chromium-openai-api-bridge): a Node bridge that keeps a real Chromium page alive and exposes a localhost OpenAI-compatible API.
 - [electron-openai-api-bridge](./electron-openai-api-bridge): an Electron desktop wrapper that exposes a localhost OpenAI-compatible API from the Electron main process.
 - [webgpu-llm-web-server](./webgpu-llm-web-server): a minimal browser-hosted WebGPU LLM service where the page runs WebLLM and same-origin browser code calls the API directly.
+- [firefox-webgpu-llm-extension](./firefox-webgpu-llm-extension): a Firefox sidebar extension that runs WebLLM locally in the extension UI and adds storage cleanup and usage reporting.
 
 ## Projects
 
@@ -68,17 +69,39 @@ pnpm install
 pnpm dev
 ```
 
+### Firefox WebGPU LLM Extension
+
+Path: [firefox-webgpu-llm-extension](./firefox-webgpu-llm-extension)
+
+Use this when you want the model directly inside Firefox as a docked sidebar tool.
+
+- Opens from the Firefox toolbar into the browser sidebar.
+- Runs WebLLM inside the extension UI with WebGPU.
+- Streams chat responses inside the sidebar conversation panel.
+- Shows model-load progress with a progress bar.
+- Reports WebLLM storage usage and can clear the extension's WebLLM caches and databases.
+
+Typical dev flow:
+
+```bash
+cd firefox-webgpu-llm-extension
+pnpm install
+pnpm build
+```
+
 ## Which One To Use
 
 - Choose `webgpu-llm-web-server` if your client is another browser page on the same origin.
 - Choose `chromium-openai-api-bridge` if you want a practical localhost API without Electron.
 - Choose `electron-openai-api-bridge` if you want a desktop wrapper with a built-in localhost API.
+- Choose `firefox-webgpu-llm-extension` if you want the model embedded directly into Firefox as a sidebar experience.
 
 ## Notes
 
-- All three variants rely on WebGPU and browser-style runtimes for model execution.
+- All four variants rely on WebGPU and browser-style runtimes for model execution.
 - The Chromium and Electron bridges are the right choices for machine-local REST access from terminal tools.
 - The browser-hosted service is the lightest setup, but it depends on the page remaining open.
+- The Firefox extension keeps its WebLLM data inside the extension's own browser storage context.
 
 ## Acknowledgments
 

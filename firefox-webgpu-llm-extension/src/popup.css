@@ -1,0 +1,212 @@
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, sans-serif;
+  background: Canvas;
+  color: CanvasText;
+  --panel-bg: color-mix(in srgb, Canvas 92%, ButtonFace);
+  --panel-border: color-mix(in srgb, CanvasText 16%, Canvas);
+  --muted-text: color-mix(in srgb, CanvasText 62%, Canvas);
+  --field-bg: Field;
+  --field-text: FieldText;
+  --button-bg: ButtonFace;
+  --button-text: ButtonText;
+  --accent-bg: AccentColor;
+  --accent-text: AccentColorText;
+  --surface-alt: color-mix(in srgb, Canvas 86%, GrayText 8%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: transparent;
+}
+
+.app {
+  padding: 12px;
+}
+
+.hero {
+  margin-bottom: 10px;
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted-text);
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.2;
+  font-weight: 600;
+}
+
+.subtitle {
+  margin: 8px 0 0;
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
+.panel {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--panel-bg);
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+}
+
+.field span {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted-text);
+}
+
+select,
+textarea,
+button {
+  font: inherit;
+}
+
+select,
+textarea {
+  width: 100%;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: var(--field-bg);
+  color: var(--field-text);
+}
+
+textarea {
+  resize: vertical;
+  min-height: 96px;
+}
+
+/* CHANGE: Styling for the on-demand current-page attachment controls. */
+.page-context-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+/* CHANGE: Styling for the on-demand current-page attachment controls. */
+.page-context-row span {
+  font-size: 12px;
+  color: var(--muted-text);
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+button {
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-weight: 600;
+  background: var(--button-bg);
+  color: var(--button-text);
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+#load-button,
+#send-button {
+  background: var(--accent-bg);
+  color: var(--accent-text);
+  border-color: color-mix(in srgb, var(--accent-bg) 60%, CanvasText);
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.status-grid div,
+.panel-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-label {
+  font-size: 12px;
+  color: var(--muted-text);
+}
+
+#model-status,
+#engine-status {
+  color: CanvasText;
+  font-size: 13px;
+}
+
+.progress-track {
+  width: 150px;
+  height: 8px;
+  overflow: hidden;
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  background: var(--surface-alt);
+}
+
+.progress-bar {
+  width: 0%;
+  height: 100%;
+  background: var(--accent-bg);
+  transition: width 140ms ease;
+}
+
+.conversation {
+  display: grid;
+  gap: 10px;
+  max-height: 100%;
+  min-height: 220px;
+  overflow: auto;
+}
+
+.message {
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  white-space: pre-wrap;
+  line-height: 1.45;
+  background: var(--surface-alt);
+}
+
+.message.user {
+  background: color-mix(in srgb, var(--accent-bg) 18%, Canvas);
+}
+
+.message.assistant {
+  background: color-mix(in srgb, Field 70%, Canvas);
+}
+
+.message.system {
+  color: var(--muted-text);
+}

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Local WebGPU AI</title>
+    <link rel="stylesheet" href="./popup.css" />
+  </head>
+  <body>
+    <main class="app">
+      <!-- <header class="hero">
+        <p class="eyebrow">Firefox Sidebar</p>
+        <h1>Local WebGPU AI</h1>
+        <p class="subtitle">Runs a local WebLLM model in a Firefox sidebar.</p>
+      </header> -->
+
+      <section class="panel">
+        <label class="field">
+          <span>Model</span>
+          <select id="model-select"></select>
+        </label>
+
+        <div class="actions">
+          <button id="load-button" type="button">Load Model</button>
+          <button id="clean-button" type="button" class="ghost">Clear Model Storage</button>
+          <span id="model-status">not loaded</span>
+        </div>
+
+        <div class="status-grid">
+          <div>
+            <span class="status-label">Progress</span>
+            <div class="progress-block">
+              <div class="progress-track" aria-hidden="true">
+                <div id="progress-bar" class="progress-bar"></div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <span class="status-label">State</span>
+            <span id="engine-status">ready</span>
+          </div>
+          <div>
+            <span class="status-label">Storage</span>
+            <span id="storage-usage">checking...</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <label class="field">
+          <span>Prompt</span>
+          <textarea
+            id="prompt-input"
+            rows="5"
+            placeholder="Ask the local model something useful..."
+          ></textarea>
+        </label>
+        <!-- CHANGE: The sidebar can now attach the active page as prompt context on demand. -->
+        <div class="page-context-row">
+          <button id="use-page-button" type="button" class="ghost">Use Current Page</button>
+          <span id="page-context-status">No page attached</span>
+        </div>
+
+        <div class="actions">
+          <button id="send-button" type="button">Send</button>
+          <button id="clear-button" type="button" class="ghost">Clear Chat</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-heading">
+          <h2>Conversation</h2>
+        </div>
+        <div id="conversation" class="conversation"></div>
+      </section>
+    </main>
+
+    <script type="module" src="./popup.ts"></script>
+  </body>
+</html>

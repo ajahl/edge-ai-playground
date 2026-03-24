@@ -1,0 +1,23 @@
+{
+  "name": "firefox-openai-api-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "parcel build src/manifest.json --config @parcel/config-webextension",
+    "dev": "parcel watch src/manifest.json --config @parcel/config-webextension"
+  },
+  "dependencies": {
+    "@mlc-ai/web-llm": "0.2.82",
+    "@mlc-ai/web-runtime": "^0.24.0-dev2",
+    "@mlc-ai/web-xgrammar": "0.1.27"
+  },
+  "devDependencies": {
+    "@parcel/config-webextension": "^2.15.4",
+    "buffer": "^6.0.3",
+    "parcel": "^2.15.4",
+    "process": "^0.11.10",
+    "typescript": "^6.0.2",
+    "url": "^0.11.4"
+  }
+}
