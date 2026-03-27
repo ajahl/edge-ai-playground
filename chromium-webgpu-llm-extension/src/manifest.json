@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "Chromium WebGPU AI",
+  "version": "0.1.0",
+  "description": "Run local WebLLM chat inside a Chromium side panel extension.",
+  "action": {
+    "default_title": "Open Chromium WebGPU AI"
+  },
+  "side_panel": {
+    "default_path": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.ts",
+    "type": "module"
+  },
+  "permissions": [
+    "activeTab",
+    "offscreen",
+    "sidePanel",
+    "scripting",
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "<all_urls>",
+    "https://huggingface.co/*",
+    "https://cdn-lfs.huggingface.co/*",
+    "https://cdn-lfs-us-1.huggingface.co/*",
+    "https://raw.githubusercontent.com/*",
+    "https://cdn-lfs-us-1.hf.co/*",
+    "https://cas-bridge.xethub.hf.co/*"
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://huggingface.co https://cdn-lfs.huggingface.co https://cdn-lfs-us-1.huggingface.co https://raw.githubusercontent.com https://cdn-lfs-us-1.hf.co https://cas-bridge.xethub.hf.co data:;"
+  }
+}
