@@ -1,0 +1,27 @@
+{
+  "manifest_version": 2,
+  "name": "Safari WebGPU AI",
+  "version": "0.1.0",
+  "description": "Run local WebLLM chat inside a Safari extension popup.",
+  "browser_action": {
+    "default_title": "Open Safari WebGPU AI",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "page": "background.html",
+    "persistent": true
+  },
+  "content_security_policy": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://huggingface.co https://cdn-lfs.huggingface.co https://cdn-lfs-us-1.huggingface.co https://raw.githubusercontent.com https://cdn-lfs-us-1.hf.co https://cas-bridge.xethub.hf.co data:;",
+  "permissions": [
+    "<all_urls>",
+    "activeTab",
+    "storage",
+    "tabs",
+    "https://huggingface.co/*",
+    "https://cdn-lfs.huggingface.co/*",
+    "https://cdn-lfs-us-1.huggingface.co/*",
+    "https://raw.githubusercontent.com/*",
+    "https://cdn-lfs-us-1.hf.co/*",
+    "https://cas-bridge.xethub.hf.co/*"
+  ]
+}

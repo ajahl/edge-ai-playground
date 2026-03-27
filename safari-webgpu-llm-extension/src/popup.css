@@ -1,0 +1,275 @@
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, sans-serif;
+  --popup-width: 420px;
+  --popup-height: 560px;
+  --app-bg: Canvas;
+  --app-text: CanvasText;
+  --panel-bg: Canvas;
+  --panel-border: GrayText;
+  --muted-text: GrayText;
+  --field-bg: Field;
+  --field-text: FieldText;
+  --surface-alt: ButtonFace;
+  --button-bg: ButtonFace;
+  --button-text: ButtonText;
+  --button-border: GrayText;
+  --button-primary-bg: ButtonFace;
+  --button-primary-text: #ffffff;
+  --button-primary-border: #248a3d;
+  --message-user-bg: Canvas;
+  --message-user-border: AccentColor;
+  --message-assistant-bg: Field;
+  --message-system-bg: Canvas;
+  --progress-track-bg: ButtonFace;
+  --progress-fill-bg: lch(71.05% 75.47 144.13);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  width: var(--popup-width);
+  height: var(--popup-height);
+}
+
+body {
+  margin: 0;
+  width: var(--popup-width);
+  height: var(--popup-height);
+  background: var(--app-bg);
+  color: var(--app-text);
+  overflow: hidden;
+  font-size: 13px;
+}
+
+.app {
+  height: 100%;
+  padding: 12px;
+  overflow-y: auto;
+}
+
+.hero {
+  margin-bottom: 10px;
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted-text);
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.2;
+  font-weight: 600;
+}
+
+.subtitle {
+  margin: 8px 0 0;
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
+.panel {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--panel-bg);
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+}
+
+.field span {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted-text);
+}
+
+select,
+textarea,
+button {
+  font: inherit;
+}
+
+select,
+textarea {
+  width: 100%;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: var(--field-bg);
+  color: var(--field-text);
+  font-size: 13px;
+}
+
+textarea {
+  resize: vertical;
+  min-height: 96px;
+}
+
+/* CHANGE: Styling for the on-demand current-page attachment controls. */
+.page-context-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+/* CHANGE: Styling for the on-demand current-page attachment controls. */
+.page-context-row span {
+  font-size: 11px;
+  color: var(--muted-text);
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+button {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid var(--button-border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-weight: 600;
+  background: var(--button-bg);
+  color: var(--button-text);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+#load-button,
+#send-button {
+  background: var(--button-primary-bg);
+  color: var(--button-primary-text);
+  border-color: var(--button-primary-border);
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.status-grid div,
+.panel-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-label {
+  font-size: 11px;
+  color: var(--muted-text);
+}
+
+#model-status,
+#engine-status {
+  color: var(--app-text);
+  font-size: 12px;
+}
+
+.progress-track {
+  position: relative;
+  width: 150px;
+  height: 8px;
+  overflow: hidden;
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  background: var(--progress-track-bg);
+}
+
+.progress-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--progress-fill-bg);
+  transition: width 180ms ease;
+}
+
+.progress-track.is-indeterminate .progress-bar {
+  width: 45%;
+  animation: progress-indeterminate 1.1s ease-in-out infinite;
+}
+
+.progress-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--app-text);
+  pointer-events: none;
+}
+
+@keyframes progress-indeterminate {
+  0% {
+    transform: translateX(-110%);
+  }
+
+  50% {
+    transform: translateX(70%);
+  }
+
+  100% {
+    transform: translateX(210%);
+  }
+}
+
+.conversation {
+  display: grid;
+  gap: 10px;
+  max-height: 260px;
+  min-height: 220px;
+  overflow: auto;
+}
+
+.message {
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  white-space: pre-wrap;
+  line-height: 1.45;
+  background: var(--surface-alt);
+  font-size: 12px;
+}
+
+.message.user {
+  background: var(--message-user-bg);
+  border-color: var(--message-user-border);
+}
+
+.message.assistant {
+  background: var(--message-assistant-bg);
+}
+
+.message.system {
+  color: var(--muted-text);
+  background: var(--message-system-bg);
+}
