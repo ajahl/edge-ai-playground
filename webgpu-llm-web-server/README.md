@@ -27,10 +27,19 @@ The page and API live on the same origin, for example `http://127.0.0.1:4173`, w
 - a browser with WebGPU support
 - service worker support
 
+## Architecture
+
+This project remains browser-hosted even when you run it in Docker:
+
+- the container only serves the built web app
+- the browser page still runs WebLLM, WASM, and WebGPU
+- the service worker still exposes same-origin `/v1/...` routes
+- the API only works while a real browser page is open on that origin
+
 ## Run In Dev
 
 ```bash
-cd web-llm/examples/openai-api
+cd webgpu-llm-web-server
 pnpm install
 pnpm dev
 ```
@@ -45,6 +54,32 @@ pnpm start
 ```
 
 This serves the built page on `http://127.0.0.1:4173`.
+
+## Run In Docker
+
+Build the browser-hosted container:
+
+```bash
+docker build -t webgpu-llm-web-server .
+```
+
+Run it with the same port exposed:
+
+```bash
+docker run --rm -p 4173:4173 webgpu-llm-web-server
+```
+
+Then open `http://127.0.0.1:4173` in a WebGPU-capable browser.
+
+This Docker mode is side-by-side with the existing local Node flow, not a new backend architecture. The container serves the app, but the model still runs in the browser that opens the page.
+
+## Calling It From Outside
+
+You can expose the page URL from Docker and access it remotely through your normal host or reverse proxy setup, but the WebLLM API is still browser-scoped:
+
+- remote users can open the page and use the same-origin `/v1/...` routes from that browser session
+- external tools such as `curl` do not get a standalone model server from this setup
+- if you need a true externally callable API, use the Chromium or Electron bridge variant instead
 
 ## Example Browser Request
 
@@ -93,4 +128,5 @@ await fetch("/v1/load", {
 - The model lives in the browser, not in Node.
 - The model stays loaded while the page stays open.
 - This is intended for browser callers on the same origin.
+- Docker here changes deployment, not the inference runtime.
 - If you need a machine-wide localhost API for `curl`, use the Electron or Chrome bridge examples instead.
