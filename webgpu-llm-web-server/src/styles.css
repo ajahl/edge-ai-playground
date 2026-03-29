@@ -330,6 +330,13 @@ button:disabled {
   color: var(--muted-text);
 }
 
+.message-meta {
+  margin-top: 8px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--muted-text);
+}
+
 .composer {
   flex-shrink: 0;
   padding: 16px 24px 20px;

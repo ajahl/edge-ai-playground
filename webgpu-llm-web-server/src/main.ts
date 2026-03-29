@@ -100,7 +100,10 @@ async function runPrompt() {
     content: prompt,
   });
   renderConversation(chatHistory);
-  const assistantNode = appendMessage("assistant", "...");
+  const assistantNode = appendMessage({
+    role: "assistant",
+    content: "...",
+  });
   activeChatAbortController = new AbortController();
 
   try {
@@ -136,7 +139,7 @@ async function runPrompt() {
     const decoder = new TextDecoder();
     let buffer = "";
     let message = "";
-    let usageText = "";
+    let usage: ChatMessage["usage"];
 
     while (true) {
       const { value, done } = await reader.read();
@@ -170,17 +173,43 @@ async function runPrompt() {
         message += delta;
 
         if (payload.usage) {
-          usageText = `\n\nUsage:\n${JSON.stringify(payload.usage, null, 2)}`;
+          usage = payload.usage;
         }
 
-        assistantNode.textContent = `${message || "Streaming..."}${usageText}`;
+        assistantNode.replaceChildren();
+        const body = document.createElement("div");
+        body.textContent = message || "Streaming...";
+        assistantNode.append(body);
+        if (usage) {
+          const meta = document.createElement("div");
+          meta.className = "message-meta";
+          const parts: string[] = [];
+          if (typeof usage.prompt_tokens === "number") {
+            parts.push(`prompt ${usage.prompt_tokens}`);
+          }
+          if (typeof usage.completion_tokens === "number") {
+            parts.push(`completion ${usage.completion_tokens}`);
+          }
+          if (typeof usage.total_tokens === "number") {
+            parts.push(`total ${usage.total_tokens}`);
+          }
+          if (typeof usage.extra?.decode_tokens_per_s === "number") {
+            parts.push(`decode ${usage.extra.decode_tokens_per_s.toFixed(1)} tok/s`);
+          }
+          if (typeof usage.extra?.time_to_first_token_s === "number") {
+            parts.push(`ttft ${usage.extra.time_to_first_token_s.toFixed(2)}s`);
+          }
+          meta.textContent = parts.join(" • ");
+          assistantNode.append(meta);
+        }
         scrollTranscriptToBottom();
       }
     }
 
     chatHistory.push({
       role: "assistant",
-      content: `${message || "Streaming..."}${usageText}`,
+      content: message || "Streaming...",
+      usage,
     });
     renderConversation(chatHistory);
   } catch (error) {
