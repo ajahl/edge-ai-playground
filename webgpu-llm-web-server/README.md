@@ -15,11 +15,14 @@ The page and API live on the same origin, for example `http://127.0.0.1:4173`, w
 - `GET /v1/models`
 - `POST /v1/load`
 - `POST /v1/chat/completions`
+- `POST /v1/url-context`
 
 `POST /v1/chat/completions` supports:
 
 - non-streaming JSON responses
 - streaming SSE responses when `stream: true`
+
+`POST /v1/url-context` lets the local Node server fetch a public web page, extract readable text, and return it so the UI can attach that page as context for the next prompt.
 
 ## Requirements
 
@@ -115,6 +118,23 @@ await fetch("/v1/load", {
 });
 ```
 
+Attach a public URL as prompt context through the local server:
+
+```js
+const response = await fetch("/v1/url-context", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    url: "https://example.com/article",
+  }),
+});
+
+const data = await response.json();
+console.log(data.title, data.url, data.content);
+```
+
 ## Project Structure
 
 - `server.mjs`: tiny static server for the built page
@@ -122,6 +142,14 @@ await fetch("/v1/load", {
 - `src/main.ts`: hosts the WebLLM engine in the page and handles requests
 - `sw.ts`: implements the same-origin REST endpoints and forwards requests to the page
 - `src/index.ts`: shared constants such as route paths and available models
+
+## URL Context Notes
+
+- URL attachment uses the local Node server, not direct browser fetches.
+- This avoids most browser-side CORS issues for public pages.
+- The fetched page is reduced to plain readable text before being attached.
+- The attached page is sent into the next chat request as a `system` context message.
+- This route is available when you run the built app with `pnpm start` or in Docker.
 
 ## Notes
 
