@@ -4,19 +4,27 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    docker-flake = {
+      url = "github:ajahl/docker-flake";
+      flake = true;
+    };
     oh-my-bash = {
       url = "github:ohmybash/oh-my-bash";
       flake = false;
     };
   };
 
-  outputs = { self, nixpkgs, flake-utils, oh-my-bash }@inputs:
+  outputs = { self, nixpkgs, flake-utils, docker-flake, oh-my-bash }@inputs:
     flake-utils.lib.eachDefaultSystem (system:
+      
       let
         pkgs = import nixpkgs { inherit system; };
+      
       in {
-        devShells.default = pkgs.mkShell {
-          buildInputs = [
+        devShells.default =
+          docker-flake.devShell.${system}.overrideAttrs (oldAttrs: {
+          # nix-env -qaP | grep chromium
+          buildInputs = (oldAttrs.buildInputs or []) ++ [
             pkgs.nodejs_22
             pkgs.pnpm
             pkgs.git
@@ -26,8 +34,9 @@
             pkgs.playwright-driver.browsers
           ];
 
+          # shellHook = (oldAttrs.shellHook or "") + ''
           shellHook = ''
-
+            colima start
             export LANG=en_US.UTF-8
             export PLAYWRIGHT_BROWSERS_PATH="${pkgs.playwright-driver.browsers}"
             export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
@@ -46,11 +55,12 @@
             fi
 
             echo ">>>>>>>>>>>> Web GPU LLM dev shell activated <<<<<<<<<<<<<<"
+            docker --version
             echo "Node: $(node -v)"
             echo "Playwright browsers: $PLAYWRIGHT_BROWSERS_PATH"
             echo "Playwright executable: $PLAYWRIGHT_LAUNCH_OPTIONS_EXECUTABLE_PATH"
             pnpm install ws
           '';
-        };
+        });
       });
 }
