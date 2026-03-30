@@ -1,4 +1,5 @@
-import { AVAILABLE_MODELS, type AvailableModel } from "./index";
+import type { AvailableModel } from "./index";
+import { AVAILABLE_MODELS } from "./models";
 import { cachedModels, modelSelect, storageUsage } from "./dom";
 import type { CachedModelMeta } from "./types";
 import { formatBytes, formatTime, setStatus } from "./utils";

@@ -1,12 +1,11 @@
 import "./styles.css";
 import {
-  AVAILABLE_MODELS,
   DEFAULT_CONTEXT_WINDOW_SIZE,
-  DEFAULT_MODEL,
   DEFAULT_SLIDING_WINDOW_SIZE,
   OPENAI_API_PATH,
   type AvailableModel,
 } from "./index";
+import { AVAILABLE_MODELS, DEFAULT_MODEL } from "./models";
 import {
   attachedUrlStatus,
   clearChatButton,
@@ -24,6 +23,7 @@ import {
   swStatus,
 } from "./dom";
 import { refreshStorageUsage } from "./cache";
+import { fetchHuggingFaceMLCModels } from "./huggingface";
 import { createModelRuntime } from "./model-runtime";
 import { getModels, postToServiceWorker, registerServiceWorker, startKeepAlive } from "./service-worker-client";
 import type { AttachedUrlContext, ChatMessage } from "./types";
@@ -64,6 +64,33 @@ function setupModelSelector() {
     option.value = model;
     option.textContent = model;
     option.selected = model === DEFAULT_MODEL;
+    modelSelect.append(option);
+  }
+}
+
+async function appendHuggingFaceModels() {
+  const models = await fetchHuggingFaceMLCModels();
+  const existing = new Set(
+    Array.from(modelSelect.options)
+      .map((option) => option.value)
+      .filter(Boolean),
+  );
+  const additionalModels = models.filter((model) => !existing.has(model));
+
+  if (additionalModels.length === 0) {
+    return;
+  }
+
+  const separator = document.createElement("option");
+  separator.disabled = true;
+  separator.textContent = "Hugging Face MLC Models";
+  separator.value = "";
+  modelSelect.append(separator);
+
+  for (const model of additionalModels) {
+    const option = document.createElement("option");
+    option.value = model;
+    option.textContent = model;
     modelSelect.append(option);
   }
 }
@@ -242,6 +269,13 @@ function clearChat() {
 
 async function main() {
   setupModelSelector();
+  void appendHuggingFaceModels().catch((error) => {
+    addSystemMessage(
+      error instanceof Error
+        ? `Could not load Hugging Face model list: ${error.message}`
+        : `Could not load Hugging Face model list: ${String(error)}`,
+    );
+  });
   await registerServiceWorker(serviceWorkerUrl, setAppState);
   keepAliveTimer = startKeepAlive(postToServiceWorker);
   await refreshStorage();

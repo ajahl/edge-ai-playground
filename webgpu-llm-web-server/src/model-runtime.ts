@@ -1,5 +1,7 @@
 import * as webllm from "@mlc-ai/web-llm";
-import { DEFAULT_MODEL, LOAD_API_PATH, type AvailableModel } from "./index";
+import { LOAD_API_PATH, type AvailableModel } from "./index";
+import { ensureModelInAppConfig, getAppConfig } from "./app-config";
+import { DEFAULT_MODEL } from "./models";
 import {
   clearWebLLMBrowserStorage,
   inspectWebLLMCache,
@@ -32,11 +34,23 @@ export function createModelRuntime(deps: RuntimeDeps) {
   let loadingModel: AvailableModel | null = null;
 
   async function ensureLoaded(modelId: AvailableModel = deps.getSelectedModel()) {
+    console.debug("[webgpu-llm] ensureLoaded called", {
+      modelId,
+      loadedModel,
+      loadingModel,
+      hasPendingLoad: loadPromise !== null,
+    });
+
     if (loadPromise) {
       if (loadingModel === modelId || (loadedModel === modelId && loadingModel === null)) {
+        console.debug("[webgpu-llm] reusing existing load promise", { modelId });
         return loadPromise;
       }
 
+      console.debug("[webgpu-llm] waiting for current load before switching model", {
+        currentLoadingModel: loadingModel,
+        requestedModel: modelId,
+      });
       await loadPromise;
       return ensureLoaded(modelId);
     }
@@ -46,7 +60,9 @@ export function createModelRuntime(deps: RuntimeDeps) {
       deps.setAppState("loading");
 
       if (!engine) {
+        const appConfig = getAppConfig();
         engine = new webllm.MLCEngine({
+          appConfig,
           initProgressCallback(report) {
             setStatus(progressStatus, report.text);
             deps.setProgress(report.progress);
@@ -64,9 +80,13 @@ export function createModelRuntime(deps: RuntimeDeps) {
       }
 
       if (loadedModel !== modelId) {
+        ensureModelInAppConfig(modelId);
+        engine.setAppConfig(getAppConfig());
         loadingModel = modelId;
         setStatus(modelStatus, `loading ${modelId}`);
+        console.debug("[webgpu-llm] starting engine.reload", { modelId });
         await engine.reload(modelId);
+        console.debug("[webgpu-llm] finished engine.reload", { modelId });
         loadedModel = modelId;
         loadingModel = null;
         deps.setProgress(1);
@@ -163,6 +183,8 @@ export function createModelRuntime(deps: RuntimeDeps) {
   }
 
   async function preloadModel(model: AvailableModel) {
+    ensureModelInAppConfig(model);
+    console.debug("[webgpu-llm] preloadModel requested", { model });
     deps.setLoadingState(true);
     deps.setAppState("loading");
     setStatus(modelStatus, `loading ${model}`);
@@ -181,6 +203,11 @@ export function createModelRuntime(deps: RuntimeDeps) {
       if (!response.ok) {
         throw new Error(payload?.error?.message || `Preload failed with ${response.status}`);
       }
+
+      console.debug("[webgpu-llm] preloadModel response", {
+        requestedModel: model,
+        loadedModel: payload.model || model,
+      });
 
       setStatus(modelStatus, payload.model || model);
       setStatus(progressStatus, "ready");

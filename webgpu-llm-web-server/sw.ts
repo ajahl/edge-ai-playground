@@ -1,10 +1,9 @@
 import {
-  AVAILABLE_MODELS,
-  DEFAULT_MODEL,
   LOAD_API_PATH,
   MODELS_API_PATH,
   OPENAI_API_PATH,
 } from "./src/index";
+import { AVAILABLE_MODELS, DEFAULT_MODEL } from "./src/models";
 
 const pendingRequests = new Map();
 let loadedModel = DEFAULT_MODEL;
