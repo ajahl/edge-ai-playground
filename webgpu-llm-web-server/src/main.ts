@@ -22,7 +22,7 @@ import {
   stopButton,
   swStatus,
 } from "./dom";
-import { refreshStorageUsage } from "./cache";
+import { refreshStorageUsage, setKnownModels } from "./cache";
 import { fetchHuggingFaceMLCModels } from "./huggingface";
 import { createModelRuntime } from "./model-runtime";
 import { getModels, postToServiceWorker, registerServiceWorker, startKeepAlive } from "./service-worker-client";
@@ -66,6 +66,7 @@ function setupModelSelector() {
     option.selected = model === DEFAULT_MODEL;
     modelSelect.append(option);
   }
+  setKnownModels([...AVAILABLE_MODELS]);
 }
 
 async function appendHuggingFaceModels() {
@@ -93,6 +94,12 @@ async function appendHuggingFaceModels() {
     option.textContent = model;
     modelSelect.append(option);
   }
+
+  setKnownModels(
+    Array.from(modelSelect.options)
+      .map((option) => option.value)
+      .filter((value): value is AvailableModel => Boolean(value)),
+  );
 }
 
 async function runPrompt() {

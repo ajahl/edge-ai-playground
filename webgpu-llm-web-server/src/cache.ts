@@ -6,6 +6,15 @@ import { formatBytes, formatTime, setStatus } from "./utils";
 
 const WEBLLM_CACHE_NAMES = ["webllm/model", "webllm/config", "webllm/wasm"];
 const CACHED_MODELS_META_STORAGE_KEY = "webllm.cached-model-meta.v1";
+let knownModels: AvailableModel[] = [...AVAILABLE_MODELS];
+
+export function setKnownModels(models: AvailableModel[]) {
+  knownModels = Array.from(new Set(models));
+}
+
+function getKnownModels() {
+  return knownModels;
+}
 
 function readCachedModelMetaIndex() {
   try {
@@ -46,7 +55,7 @@ export function removeCachedModelMeta(model: AvailableModel) {
 
 function getCachedModelMetaList() {
   const index = readCachedModelMetaIndex();
-  return AVAILABLE_MODELS
+  return getKnownModels()
     .map((model) => index[model])
     .filter((entry): entry is CachedModelMeta => Boolean(entry));
 }
@@ -58,13 +67,14 @@ export async function inspectWebLLMCache() {
 
   let total = 0;
   const perModelBytes = new Map<AvailableModel, number>();
+  const knownModels = getKnownModels();
 
   for (const cacheName of WEBLLM_CACHE_NAMES) {
     const cache = await caches.open(cacheName);
     const requests = await cache.keys();
 
     for (const request of requests) {
-      const matchedModel = AVAILABLE_MODELS.find((model) => request.url.includes(model)) ?? null;
+      const matchedModel = knownModels.find((model) => request.url.includes(model)) ?? null;
       const response = await cache.match(request);
       if (!response) {
         continue;
@@ -81,7 +91,7 @@ export async function inspectWebLLMCache() {
 
   return {
     totalBytes: total,
-    cachedModels: AVAILABLE_MODELS.filter((model) => perModelBytes.has(model)),
+    cachedModels: knownModels.filter((model) => perModelBytes.has(model)),
     perModelBytes,
   };
 }
