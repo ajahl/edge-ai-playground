@@ -1,9 +1,11 @@
 # Edge AI Playground
 
-This workspace contains six WebGPU/WebLLM variants with different runtime shapes:
+This workspace contains eight WebGPU/WebLLM variants with different runtime shapes:
 
 - [chromium-openai-api-bridge](./chromium-openai-api-bridge): a Node bridge that keeps a real Chromium page alive and exposes a localhost OpenAI-compatible API.
+- [docker-chromium-webgpu-bridge](./docker-chromium-webgpu-bridge): a Docker-first Node bridge that serves its renderer, launches Chromium in-container, and exposes an external OpenAI-compatible API.
 - [electron-openai-api-bridge](./electron-openai-api-bridge): an Electron desktop wrapper that exposes a localhost OpenAI-compatible API from the Electron main process.
+- [terminal-webgpu-llm](./terminal-webgpu-llm): a terminal-first dashboard and local API bridge that keeps WebLLM running in a hidden Chromium renderer.
 - [webgpu-llm-web-server](./webgpu-llm-web-server): a minimal browser-hosted WebGPU LLM service where the page runs WebLLM and same-origin browser code calls the API directly.
 - [firefox-webgpu-llm-extension](./firefox-webgpu-llm-extension): a Firefox sidebar extension that runs WebLLM locally in the extension UI and adds storage cleanup and usage reporting.
 - [chromium-webgpu-llm-extension](./chromium-webgpu-llm-extension): a Chromium-family side panel extension that mirrors the Firefox extension behavior using a MV3 service worker and an offscreen engine host.
@@ -31,6 +33,28 @@ pnpm install
 pnpm dev
 ```
 
+### Docker Chromium WebGPU Bridge
+
+Path: [docker-chromium-webgpu-bridge](./docker-chromium-webgpu-bridge)
+
+Use this when you want the external-client bridge shape packaged as a container-oriented subproject.
+
+- Starts a Node HTTP server.
+- Serves the renderer UI from the same process.
+- Launches Playwright-managed Chromium inside the runtime environment.
+- Runs WebLLM in that Chromium page with WebGPU.
+- Exposes `GET /health`, `GET /v1/models`, `POST /v1/load`, and `POST /v1/chat/completions`.
+- Good fit when you want a single subproject that maps closely to a Docker deployment.
+
+Typical dev flow:
+
+```bash
+cd docker-chromium-webgpu-bridge
+pnpm install
+pnpm build
+pnpm start
+```
+
 ### Electron OpenAI API Bridge
 
 Path: [electron-openai-api-bridge](./electron-openai-api-bridge)
@@ -49,6 +73,27 @@ Typical dev flow:
 cd electron-openai-api-bridge
 pnpm install
 pnpm dev
+```
+
+### Terminal WebGPU LLM
+
+Path: [terminal-webgpu-llm](./terminal-webgpu-llm)
+
+Use this when you want a terminal-first local chat tool with the same hidden-browser WebGPU runtime shape.
+
+- Starts a terminal dashboard UI instead of a visible browser page.
+- Launches Playwright-managed Chromium in the background for the actual WebLLM/WebGPU runtime.
+- Exposes a localhost OpenAI-compatible API for use from another terminal.
+- Supports explicit model loading, cache inspection, streamed chat, and response performance reporting.
+- Best fit when you want a TUI plus machine-local API access at the same time.
+
+Typical dev flow:
+
+```bash
+cd terminal-webgpu-llm
+pnpm install
+pnpm build
+pnpm start
 ```
 
 ### WebGPU LLM Service
@@ -132,15 +177,18 @@ pnpm build
 
 - Choose `webgpu-llm-web-server` if your client is another browser page on the same origin.
 - Choose `chromium-openai-api-bridge` if you want a practical localhost API without Electron.
+- Choose `docker-chromium-webgpu-bridge` if you want the Chromium bridge shape in a Docker-oriented standalone subproject.
 - Choose `electron-openai-api-bridge` if you want a desktop wrapper with a built-in localhost API.
+- Choose `terminal-webgpu-llm` if you want a terminal dashboard plus a localhost API backed by a hidden Chromium runtime.
 - Choose `firefox-webgpu-llm-extension` if you want the model embedded directly into Firefox as a sidebar experience.
 - Choose `chromium-webgpu-llm-extension` if you want the model embedded directly into Chrome or Chromium as a side panel experience.
 - Choose `safari-webgpu-llm-extension` if you want a Safari-focused starting point and you can complete the Apple packaging step outside this repo.
 
 ## Notes
 
-- All six variants rely on WebGPU and browser-style runtimes for model execution.
+- All eight variants rely on WebGPU and browser-style runtimes for model execution.
 - The Chromium and Electron bridges are the right choices for machine-local REST access from terminal tools.
+- The terminal bridge gives you both a local TUI and a localhost API, but it still depends on a hidden Chromium renderer for actual inference.
 - The browser-hosted service is the lightest setup, but it depends on the page remaining open.
 - The Firefox extension keeps its WebLLM data inside the extension's own browser storage context.
 - The Chromium-family extension keeps the model warm in an offscreen document so it can outlive the visible panel UI.
