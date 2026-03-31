@@ -5,3 +5,4 @@ dist
 
 pnpm-lock.yaml
 flake.lock
+.DS_Store
