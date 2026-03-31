@@ -25,7 +25,7 @@
           docker-flake.devShell.${system}.overrideAttrs (oldAttrs: {
           # nix-env -qaP | grep chromium
           buildInputs = (oldAttrs.buildInputs or []) ++ [
-            pkgs.nodejs_22
+            pkgs.nodejs_24
             pkgs.pnpm
             pkgs.git
             pkgs.cmake
