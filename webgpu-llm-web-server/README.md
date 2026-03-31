@@ -66,6 +66,12 @@ Build the browser-hosted container:
 docker build -t webgpu-llm-web-server .
 ```
 
+Rebuild the browser-hosted container:
+
+```bash
+docker build --no-cache -t webgpu-llm-web-server .
+```
+
 Run it with the same port exposed:
 
 ```bash
