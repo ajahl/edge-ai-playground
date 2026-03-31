@@ -51,6 +51,7 @@ const {
   appendTranscriptLine,
   replaceTranscriptLine,
   clearTranscript,
+  formatPrimaryTranscriptEntry,
   setFocusedView,
   moveFocus,
 } = createUIController(ui, () => ({
@@ -679,16 +680,16 @@ async function sendPrompt(prompt) {
   }
 
   const requestId = crypto.randomUUID();
-  const assistantLineIndex = appendTranscriptLine("{bold}assistant{/bold} ");
   let assistantText = "";
   let latestUsage = null;
+  const assistantLineIndex = appendTranscriptLine(() => formatPrimaryTranscriptEntry("assistant", assistantText || ""));
 
   await new Promise((resolve, reject) => {
     pendingStreams.set(requestId, {
       onChunk(chunk) {
         assistantText += extractChunkText(chunk);
         latestUsage = chunk?.usage || latestUsage;
-        replaceTranscriptLine(assistantLineIndex, `{bold}assistant{/bold} ${assistantText || " "}`);
+        replaceTranscriptLine(assistantLineIndex, () => formatPrimaryTranscriptEntry("assistant", assistantText || " "));
       },
       onDone(payload) {
         latestUsage = payload?.usage || latestUsage;
@@ -714,7 +715,7 @@ async function sendPrompt(prompt) {
 
   if (!assistantText) {
     assistantText = "(no response)";
-    replaceTranscriptLine(assistantLineIndex, `{bold}assistant{/bold} ${assistantText}`);
+    replaceTranscriptLine(assistantLineIndex, () => formatPrimaryTranscriptEntry("assistant", assistantText));
   }
 
   setLatestUsage(latestUsage);

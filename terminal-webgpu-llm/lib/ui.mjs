@@ -110,11 +110,37 @@ export function createUI() {
 }
 
 export function createUIController(ui, getSnapshot) {
-  const transcriptLines = [];
+  const transcriptEntries = [];
   const latestUsageLines = ["no completed response yet"];
   const focusables = [ui.transcript, ui.status, ui.performance, ui.input];
   let focusIndex = 2;
   let currentState = "starting";
+
+  function summarizeState(state) {
+    const value = String(state || "").toLowerCase();
+    if (value.includes("error")) {
+      return "error";
+    }
+    if (value.includes("loaded")) {
+      return "loaded";
+    }
+    if (value.includes("loading")) {
+      return "loading";
+    }
+    if (value.includes("thinking") || value.includes("stream") || value.includes("request")) {
+      return "running";
+    }
+    if (value.includes("fetching")) {
+      return "fetching";
+    }
+    if (value.includes("selected")) {
+      return "selected";
+    }
+    if (value.includes("starting") || value.includes("renderer")) {
+      return "starting";
+    }
+    return "ready";
+  }
 
   function renderStatus(text) {
     currentState = text;
@@ -122,7 +148,7 @@ export function createUIController(ui, getSnapshot) {
     ui.overview.setContent(
       [
         ` model {bold}${snapshot.currentModel}{/bold}`,
-        ` state {bold}${currentState}{/bold}`,
+        ` state {bold}${summarizeState(currentState)}{/bold}`,
         ` known ${snapshot.knownModelsCount}`,
         ` cached ctx ${snapshot.attachedUrlTitle ? "yes" : "no"}`,
         ` api ${snapshot.apiPort}`,
@@ -133,9 +159,6 @@ export function createUIController(ui, getSnapshot) {
       [
         `{bold}state{/bold}`,
         `${currentState}`,
-        "",
-        `{bold}model{/bold}`,
-        `${snapshot.currentModel}`,
         "",
         `{bold}runtime{/bold}`,
         snapshot.rendererLabel,
@@ -185,29 +208,66 @@ export function createUIController(ui, getSnapshot) {
   }
 
   function syncTranscript() {
-    ui.transcript.setContent(transcriptLines.join("\n"));
+    ui.transcript.setContent(
+      transcriptEntries
+        .map((entry) => entry.render())
+        .join("\n"),
+    );
     ui.transcript.setScrollPerc(100);
     ui.screen.render();
   }
 
+  function getTranscriptSeparator() {
+    const paneWidth =
+      typeof ui.transcript.width === "number"
+        ? ui.transcript.width
+        : Math.max(40, Math.floor(ui.screen.width * 0.72));
+    const ruleWidth = Math.max(12, paneWidth - 10);
+    return `{gray-fg}  ${"─".repeat(ruleWidth)}  {/}`;
+  }
+
+  function formatPrimaryTranscriptEntry(prefix, text) {
+    return `${getTranscriptSeparator()}\n{bold}${prefix}{/bold} ${text}`;
+  }
+
+  function formatTranscriptEntry(prefix, text) {
+    if (prefix === "you" || prefix === "assistant" || prefix === "system") {
+      return formatPrimaryTranscriptEntry(prefix, text);
+    }
+    return `{gray-fg}│{/} {bold}${prefix}{/bold} ${text}`;
+  }
+
   function logLine(prefix, text) {
-    transcriptLines.push(`{bold}${prefix}{/bold} ${text}`);
+    transcriptEntries.push({
+      render: () => formatTranscriptEntry(prefix, text),
+    });
     syncTranscript();
   }
 
   function appendTranscriptLine(line) {
-    transcriptLines.push(line);
+    if (typeof line === "string") {
+      transcriptEntries.push({
+        render: () => line,
+      });
+    } else {
+      transcriptEntries.push({
+        render: line,
+      });
+    }
     syncTranscript();
-    return transcriptLines.length - 1;
+    return transcriptEntries.length - 1;
   }
 
   function replaceTranscriptLine(index, line) {
-    transcriptLines[index] = line;
+    transcriptEntries[index] =
+      typeof line === "string"
+        ? { render: () => line }
+        : { render: line };
     syncTranscript();
   }
 
   function clearTranscript() {
-    transcriptLines.length = 0;
+    transcriptEntries.length = 0;
     syncTranscript();
   }
 
@@ -215,13 +275,18 @@ export function createUIController(ui, getSnapshot) {
     focusIndex = (index + focusables.length) % focusables.length;
     const target = focusables[focusIndex];
     target.focus();
-    renderStatus(`${currentState.split(" | focus ")[0]} | focus ${target.options.label?.replace(/ /g, "").toLowerCase()}`);
+    renderStatus(currentState.split(" | focus ")[0]);
     ui.screen.render();
   }
 
   function moveFocus(delta) {
     setFocusedView(focusIndex + delta);
   }
+
+  ui.screen.on("resize", () => {
+    syncTranscript();
+    renderStatus(currentState);
+  });
 
   function getCurrentState() {
     return currentState;
@@ -235,6 +300,7 @@ export function createUIController(ui, getSnapshot) {
     appendTranscriptLine,
     replaceTranscriptLine,
     clearTranscript,
+    formatPrimaryTranscriptEntry,
     setFocusedView,
     moveFocus,
     getCurrentState,
