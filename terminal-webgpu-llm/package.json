@@ -1,0 +1,19 @@
+{
+  "name": "terminal-webgpu-llm",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5177",
+    "build": "vite build",
+    "start": "node tui.mjs"
+  },
+  "dependencies": {
+    "@mlc-ai/web-llm": "0.2.82",
+    "blessed": "^0.1.81",
+    "playwright-core": "^1.57.0"
+  },
+  "devDependencies": {
+    "vite": "^8.0.1"
+  }
+}
