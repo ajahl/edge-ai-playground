@@ -1,5 +1,11 @@
 import blessed from "blessed";
 import { formatUsage } from "./text-utils.mjs";
+import { createHeader } from "./views/header.mjs";
+import { createOverview } from "./views/overview.mjs";
+import { createTranscript } from "./views/transcript.mjs";
+import { createInspector } from "./views/inspector.mjs";
+import { createPerformance } from "./views/performance.mjs";
+import { createPrompt } from "./views/prompt.mjs";
 
 export function createUI() {
   const screen = blessed.screen({
@@ -7,96 +13,12 @@ export function createUI() {
     title: "Terminal WebGPU LLM TUI",
   });
 
-  const header = blessed.box({
-    parent: screen,
-    top: 0,
-    left: 0,
-    width: "100%",
-    height: 1,
-    tags: true,
-    style: { fg: "black", bg: "green" },
-    content: " {bold}Terminal WebGPU LLM TUI{/bold}  q quit  Ctrl+L load  /model <id> switch  /models list",
-  });
-
-  const overview = blessed.box({
-    parent: screen,
-    top: 1,
-    left: 0,
-    width: "100%",
-    height: 3,
-    border: "line",
-    label: " Overview ",
-    tags: true,
-    style: { border: { fg: "green" } },
-  });
-
-  const transcript = blessed.log({
-    parent: screen,
-    top: 4,
-    left: 0,
-    width: "72%",
-    height: "100%-8",
-    border: "line",
-    label: " Transcript ",
-    tags: true,
-    scrollable: true,
-    alwaysScroll: true,
-    mouse: true,
-    keys: true,
-    scrollbar: { ch: " ", inverse: true },
-    vi: true,
-    style: { border: { fg: "cyan" } },
-  });
-
-  const status = blessed.box({
-    parent: screen,
-    top: 4,
-    right: 0,
-    width: "28%",
-    height: "100%-16",
-    border: "line",
-    label: " Inspector ",
-    content: "",
-    keys: true,
-    mouse: true,
-    scrollable: true,
-    alwaysScroll: true,
-    tags: true,
-    scrollbar: { ch: " ", inverse: true },
-    style: { border: { fg: "yellow" } },
-  });
-
-  const performance = blessed.box({
-    parent: screen,
-    bottom: 4,
-    right: 0,
-    width: "28%",
-    height: 8,
-    border: "line",
-    label: " Performance ",
-    content: "",
-    keys: true,
-    mouse: true,
-    scrollable: true,
-    alwaysScroll: true,
-    tags: true,
-    scrollbar: { ch: " ", inverse: true },
-    style: { border: { fg: "green" } },
-  });
-
-  const input = blessed.textbox({
-    parent: screen,
-    bottom: 0,
-    left: 0,
-    width: "100%",
-    height: 4,
-    border: "line",
-    label: " Prompt ",
-    inputOnFocus: true,
-    keys: true,
-    mouse: true,
-    style: { border: { fg: "magenta" } },
-  });
+  const header = createHeader(blessed, screen);
+  const overview = createOverview(blessed, screen);
+  const transcript = createTranscript(blessed, screen);
+  const status = createInspector(blessed, screen);
+  const performance = createPerformance(blessed, screen);
+  const input = createPrompt(blessed, screen);
 
   return {
     screen,
