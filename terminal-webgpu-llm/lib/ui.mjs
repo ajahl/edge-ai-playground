@@ -99,6 +99,8 @@ export function createUIController(ui, getSnapshot) {
         `tab / shift+tab  change focus`,
         `left / right     move focus`,
         `up / down        scroll pane`,
+        `enter            send prompt`,
+        `ctrl+s           newline`,
         `ctrl+l           load model`,
         `q                quit`,
         "",

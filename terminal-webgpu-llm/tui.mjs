@@ -37,6 +37,15 @@ let knownModels = [...builtInModels];
 let huggingFaceModels = [];
 const pendingStreams = new Map();
 let rendererPort = rendererListenPort;
+let modelsRefreshPromise = null;
+let interactionInFlight = false;
+let pasteInProgress = false;
+let lastPasteEndedAt = 0;
+let lastPromptInputAt = 0;
+let pendingSubmitTimer = null;
+
+const PASTE_SUBMIT_GUARD_MS = 250;
+const ENTER_SUBMIT_DEBOUNCE_MS = 120;
 
 const ui = createUI();
 const {
@@ -604,13 +613,39 @@ async function streamChatCompletion(requestPayload, res) {
 }
 
 async function refreshKnownModels() {
-  try {
-    huggingFaceModels = await fetchHuggingFaceModels();
-    knownModels = Array.from(new Set([...builtInModels, ...huggingFaceModels]));
-    logLine("system", `known models updated: ${knownModels.length}`);
-  } catch (error) {
-    logLine("error", `failed to refresh Hugging Face models: ${error instanceof Error ? error.message : String(error)}`);
+  if (modelsRefreshPromise) {
+    return modelsRefreshPromise;
   }
+
+  modelsRefreshPromise = (async () => {
+    try {
+      if (!interactionInFlight) {
+        renderStatus("refreshing models");
+      }
+      logLine("system", "refreshing Hugging Face models in background...");
+      huggingFaceModels = await fetchHuggingFaceModels();
+      knownModels = Array.from(new Set([...builtInModels, ...huggingFaceModels]));
+      logLine("system", `known models updated: ${knownModels.length}`);
+      if (!interactionInFlight) {
+        renderStatus("ready");
+      }
+    } catch (error) {
+      if (!interactionInFlight) {
+        renderStatus("error");
+      }
+      logLine("error", `failed to refresh Hugging Face models: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      modelsRefreshPromise = null;
+    }
+  })();
+
+  return modelsRefreshPromise;
+}
+
+function refreshKnownModelsInBackground() {
+  void refreshKnownModels().catch(() => {
+    // Error handling is already done inside refreshKnownModels.
+  });
 }
 
 async function showCachedModels() {
@@ -726,6 +761,11 @@ async function sendPrompt(prompt) {
 
 screen.key(["C-c", "q"], async () => {
   try {
+    screen.program?.decrst?.(2004);
+  } catch {
+    // Ignore terminal mode reset issues.
+  }
+  try {
     await browser?.close();
   } catch {
     // Ignore shutdown issues.
@@ -810,91 +850,146 @@ screen.key(["C-l"], async () => {
   }
 });
 
-input.on("submit", async (value) => {
-  input.clearValue();
-  screen.render();
-
-  const prompt = String(value || "").trim();
+async function handlePromptSubmit(rawValue) {
+  const prompt = String(rawValue || "").trim();
   if (!prompt) {
     return;
   }
 
-  if (prompt.startsWith("/model ")) {
-    currentModel = prompt.slice(7).trim() || currentModel;
-    logLine("system", `selected model: ${currentModel}`);
-    renderStatus(`selected ${currentModel}`);
-    return;
-  }
+  interactionInFlight = true;
 
-  if (prompt === "/load") {
+  try {
+    if (prompt.startsWith("/model ")) {
+      currentModel = prompt.slice(7).trim() || currentModel;
+      logLine("system", `selected model: ${currentModel}`);
+      renderStatus(`selected ${currentModel}`);
+      return;
+    }
+
+    if (prompt === "/load") {
+      try {
+        await loadModel(currentModel);
+      } catch (error) {
+        renderStatus("error");
+        logLine("error", error instanceof Error ? error.message : String(error));
+      }
+      return;
+    }
+
+    if (prompt === "/models") {
+      logLine("system", `built-in models (${builtInModels.length}):`);
+      for (const model of builtInModels) {
+        logLine("model", model);
+      }
+      logLine("system", `hugging face models (${huggingFaceModels.length}):`);
+      for (const model of huggingFaceModels) {
+        logLine("model", model);
+      }
+      return;
+    }
+
+    if (prompt === "/refresh-models") {
+      refreshKnownModelsInBackground();
+      return;
+    }
+
+    if (prompt === "/cache") {
+      try {
+        await showCachedModels();
+      } catch (error) {
+        logLine("error", error instanceof Error ? error.message : String(error));
+      }
+      return;
+    }
+
+    if (prompt.startsWith("/clear-cache ")) {
+      const model = prompt.slice(13).trim();
+      if (!model) {
+        logLine("error", "usage: /clear-cache <model>");
+        return;
+      }
+      try {
+        await clearModelCache(model);
+      } catch (error) {
+        logLine("error", error instanceof Error ? error.message : String(error));
+      }
+      return;
+    }
+
+    if (prompt === "/clear-chat") {
+      history.length = 0;
+      attachedUrlContext = null;
+      clearTranscript();
+      logLine("system", "chat history cleared");
+      renderStatus("ready");
+      return;
+    }
+
     try {
-      await loadModel(currentModel);
+      await sendPrompt(prompt);
     } catch (error) {
       renderStatus("error");
       logLine("error", error instanceof Error ? error.message : String(error));
     }
+  } finally {
+    interactionInFlight = false;
+  }
+}
+
+input.key(["enter"], async () => {
+  const withinPasteGuard = Date.now() - lastPasteEndedAt < PASTE_SUBMIT_GUARD_MS;
+  if (pasteInProgress || withinPasteGuard) {
     return;
   }
-
-  if (prompt === "/models") {
-    logLine("system", `built-in models (${builtInModels.length}):`);
-    for (const model of builtInModels) {
-      logLine("model", model);
-    }
-    logLine("system", `hugging face models (${huggingFaceModels.length}):`);
-    for (const model of huggingFaceModels) {
-      logLine("model", model);
-    }
-    return;
+  if (pendingSubmitTimer) {
+    clearTimeout(pendingSubmitTimer);
   }
-
-  if (prompt === "/refresh-models") {
-    await refreshKnownModels();
-    return;
-  }
-
-  if (prompt === "/cache") {
-    try {
-      await showCachedModels();
-    } catch (error) {
-      logLine("error", error instanceof Error ? error.message : String(error));
-    }
-    return;
-  }
-
-  if (prompt.startsWith("/clear-cache ")) {
-    const model = prompt.slice(13).trim();
-    if (!model) {
-      logLine("error", "usage: /clear-cache <model>");
+  const requestedAt = Date.now();
+  pendingSubmitTimer = setTimeout(async () => {
+    pendingSubmitTimer = null;
+    if (pasteInProgress) {
       return;
     }
-    try {
-      await clearModelCache(model);
-    } catch (error) {
-      logLine("error", error instanceof Error ? error.message : String(error));
+    if (lastPromptInputAt > requestedAt) {
+      return;
     }
-    return;
-  }
+    const value = input.getValue();
+    input.clearValue();
+    input.setScroll(0);
+    screen.render();
+    await handlePromptSubmit(value);
+  }, ENTER_SUBMIT_DEBOUNCE_MS);
+});
 
-  if (prompt === "/clear-chat") {
-    history.length = 0;
-    attachedUrlContext = null;
-    clearTranscript();
-    logLine("system", "chat history cleared");
-    renderStatus("ready");
-    return;
-  }
-
-  try {
-    await sendPrompt(prompt);
-  } catch (error) {
-    renderStatus("error");
-    logLine("error", error instanceof Error ? error.message : String(error));
-  }
+input.key(["C-s"], () => {
+  const currentValue = input.getValue();
+  input.setValue(`${currentValue}\n`);
+  input.setScrollPerc(100);
+  screen.render();
 });
 
 async function main() {
   renderStatus("starting");
+  try {
+    screen.program?.decset?.(2004);
+    screen.program?.input?.on?.("data", (chunk) => {
+      const text = Buffer.isBuffer(chunk) ? chunk.toString("utf8") : String(chunk);
+      lastPromptInputAt = Date.now();
+      if (text.includes("\u001b[200~")) {
+        pasteInProgress = true;
+        if (pendingSubmitTimer) {
+          clearTimeout(pendingSubmitTimer);
+          pendingSubmitTimer = null;
+        }
+      }
+      if (text.includes("\u001b[201~")) {
+        pasteInProgress = false;
+        lastPasteEndedAt = Date.now();
+      }
+    });
+  } catch {
+    // Ignore bracketed-paste setup issues.
+  }
   await new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(rendererListenPort, host, () => {
@@ -909,7 +1004,6 @@ async function main() {
     });
   });
   apiServer.listen(apiPort, host);
-  await refreshKnownModels();
   await ensureBrowser();
   if (startupModel) {
     currentModel = startupModel;
@@ -927,6 +1021,7 @@ async function main() {
   logLine("system", `api ready on http://${host}:${apiPort}`);
   logLine("system", "Commands: /models, /refresh-models, /model <id>, /load, /cache, /clear-cache <id>, /clear-chat.");
   renderStatus("ready");
+  refreshKnownModelsInBackground();
   setFocusedView(2);
   screen.render();
 }

@@ -7,6 +7,6 @@ export function createHeader(blessed, screen) {
     height: 1,
     tags: true,
     style: { fg: "black", bg: "green" },
-    content: " {bold}Terminal WebGPU LLM TUI{/bold}  q quit  Ctrl+L load  /model <id> switch  /models list",
+    content: " {bold}Terminal WebGPU LLM TUI{/bold}  q quit  Enter send  Ctrl+S newline  Ctrl+L load",
   });
 }
