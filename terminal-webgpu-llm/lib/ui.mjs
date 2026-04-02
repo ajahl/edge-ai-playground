@@ -112,6 +112,7 @@ export function createUIController(ui, getSnapshot) {
         `/cache`,
         `/clear-cache <id>`,
         `/clear-chat`,
+        `/export-transcript [path]`,
       ].join("\n"),
     );
 
@@ -150,15 +151,19 @@ export function createUIController(ui, getSnapshot) {
     return `{gray-fg}  ${"─".repeat(ruleWidth)}  {/}`;
   }
 
+  function escapeTaggedText(text) {
+    return blessed.escape(String(text ?? ""));
+  }
+
   function formatPrimaryTranscriptEntry(prefix, text) {
-    return `${getTranscriptSeparator()}\n{bold}${prefix}{/bold} ${text}`;
+    return `${getTranscriptSeparator()}\n{bold}${escapeTaggedText(prefix)}{/bold} ${escapeTaggedText(text)}`;
   }
 
   function formatTranscriptEntry(prefix, text) {
     if (prefix === "you" || prefix === "assistant" || prefix === "system") {
       return formatPrimaryTranscriptEntry(prefix, text);
     }
-    return `{gray-fg}│{/} {bold}${prefix}{/bold} ${text}`;
+    return `{gray-fg}│{/} {bold}${escapeTaggedText(prefix)}{/bold} ${escapeTaggedText(text)}`;
   }
 
   function logLine(prefix, text) {
@@ -195,6 +200,13 @@ export function createUIController(ui, getSnapshot) {
     syncTranscript();
   }
 
+  function exportTranscriptText() {
+    return transcriptEntries
+      .map((entry) => entry.render())
+      .join("\n")
+      .replace(/\{\/?[^}]+\}/g, "");
+  }
+
   function setFocusedView(index) {
     focusIndex = (index + focusables.length) % focusables.length;
     const target = focusables[focusIndex];
@@ -224,6 +236,7 @@ export function createUIController(ui, getSnapshot) {
     appendTranscriptLine,
     replaceTranscriptLine,
     clearTranscript,
+    exportTranscriptText,
     formatPrimaryTranscriptEntry,
     setFocusedView,
     moveFocus,

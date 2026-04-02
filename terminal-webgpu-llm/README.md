@@ -49,6 +49,7 @@ pnpm start -- Qwen2.5-Coder-3B-Instruct-q4f16_1-MLC
 - `/cache`: list cached models and total cache size
 - `/clear-cache <id>`: clear one model's cached downloads
 - `/clear-chat`: clear the conversation history
+- `/export-transcript`:
 - `q` or `Ctrl+C`: quit
 
 ## API Access

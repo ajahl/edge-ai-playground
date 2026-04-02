@@ -81,6 +81,36 @@ export function mapCompletionToResponse(payload, completion) {
   };
 }
 
+export function extractCompletionText(completion) {
+  return (
+    completion?.choices?.[0]?.message?.content ||
+    completion?.choices?.[0]?.text ||
+    ""
+  );
+}
+
+export function extractLastUserMessage(messages) {
+  if (!Array.isArray(messages)) {
+    return "";
+  }
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.role !== "user") {
+      continue;
+    }
+    if (typeof message?.content === "string") {
+      return message.content;
+    }
+    if (Array.isArray(message?.content)) {
+      return message.content
+        .map((part) => (typeof part?.text === "string" ? part.text : ""))
+        .filter(Boolean)
+        .join("\n");
+    }
+  }
+  return "";
+}
+
 export function formatUsage(usage) {
   if (!usage) {
     return null;

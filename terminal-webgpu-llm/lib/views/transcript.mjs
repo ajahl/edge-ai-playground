@@ -10,7 +10,7 @@ export function createTranscript(blessed, screen) {
     tags: true,
     scrollable: true,
     alwaysScroll: true,
-    mouse: true,
+    mouse: false,
     keys: true,
     scrollbar: { ch: " ", inverse: true },
     vi: true,

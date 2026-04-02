@@ -1,6 +1,8 @@
 import http from "node:http";
+import os from "node:os";
 import path from "node:path";
-import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { execFile } from "node:child_process";
 import { chromium } from "playwright-core";
 import {
   apiPort,
@@ -18,8 +20,10 @@ import {
   buildChatCompletionChunk,
   cleanupExtractedText,
   decodeHtmlEntities,
+  extractCompletionText,
   extractChunkText,
   extractFirstUrl,
+  extractLastUserMessage,
   extractTitle,
   formatBytes,
   mapCompletionToResponse,
@@ -60,6 +64,7 @@ const {
   appendTranscriptLine,
   replaceTranscriptLine,
   clearTranscript,
+  exportTranscriptText,
   formatPrimaryTranscriptEntry,
   setFocusedView,
   moveFocus,
@@ -110,6 +115,137 @@ function sseWrite(res, event, data) {
     res.write(`event: ${event}\n`);
   }
   res.write(`data: ${JSON.stringify(data)}\n\n`);
+}
+
+function summarizeMessages(messages) {
+  if (!Array.isArray(messages)) {
+    return [];
+  }
+  return messages.map((message, index) => {
+    const role = typeof message?.role === "string" ? message.role : "unknown";
+    const content =
+      typeof message?.content === "string"
+        ? message.content
+        : Array.isArray(message?.content)
+          ? message.content
+              .map((part) => (typeof part?.text === "string" ? part.text : ""))
+              .filter(Boolean)
+              .join(" ")
+          : "";
+    return {
+      index,
+      role,
+      chars: content.length,
+      preview: content.slice(0, 160),
+    };
+  });
+}
+
+function summarizeChatPayload(payload) {
+  return {
+    model: typeof payload?.model === "string" ? payload.model : undefined,
+    stream: payload?.stream === true,
+    messageCount: Array.isArray(payload?.messages) ? payload.messages.length : 0,
+    messages: summarizeMessages(payload?.messages),
+    response_format: payload?.response_format,
+    temperature: payload?.temperature,
+    top_p: payload?.top_p,
+    max_tokens: payload?.max_tokens,
+    tool_choice: payload?.tool_choice,
+    toolsCount: Array.isArray(payload?.tools) ? payload.tools.length : 0,
+  };
+}
+
+function formatMessagesSummary(messages) {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return "messages=0";
+  }
+  return messages
+    .map((message) => `${message.index}:${message.role}[${message.chars}] "${String(message.preview || "").replace(/\s+/g, " ")}"`)
+    .join(" | ");
+}
+
+function formatDebugPayload(payload) {
+  if (payload === undefined || payload === null) {
+    return String(payload);
+  }
+  if (typeof payload === "string") {
+    return payload;
+  }
+  if (typeof payload !== "object") {
+    return String(payload);
+  }
+
+  const parts = [];
+  if (typeof payload.model === "string") parts.push(`model=${payload.model}`);
+  if (typeof payload.stream === "boolean") parts.push(`stream=${payload.stream}`);
+  if (typeof payload.messageCount === "number") parts.push(`messages=${payload.messageCount}`);
+  if (Array.isArray(payload.messages)) parts.push(formatMessagesSummary(payload.messages));
+  if ("response_format" in payload) parts.push(`response_format=${payload.response_format === undefined ? "undefined" : JSON.stringify(payload.response_format)}`);
+  if (typeof payload.temperature === "number") parts.push(`temperature=${payload.temperature}`);
+  if (typeof payload.top_p === "number") parts.push(`top_p=${payload.top_p}`);
+  if (typeof payload.max_tokens === "number") parts.push(`max_tokens=${payload.max_tokens}`);
+  if (typeof payload.tool_choice === "string") parts.push(`tool_choice=${payload.tool_choice}`);
+  if (typeof payload.toolsCount === "number") parts.push(`tools=${payload.toolsCount}`);
+
+  if (parts.length > 0) {
+    return parts.join(" | ");
+  }
+
+  try {
+    return JSON.stringify(payload);
+  } catch (error) {
+    return `[unserializable: ${error instanceof Error ? error.message : String(error)}]`;
+  }
+}
+
+function debugLog(label, payload) {
+  if (payload === undefined) {
+    logLine("debug", label);
+    return;
+  }
+  logLine("debug", `${label}: ${formatDebugPayload(payload)}`);
+}
+
+function compactPayload(payload) {
+  try {
+    return JSON.stringify(payload, null, 2);
+  } catch (error) {
+    return `[unserializable: ${error instanceof Error ? error.message : String(error)}]`;
+  }
+}
+
+function exportTranscript(targetPath = "") {
+  const transcriptText = exportTranscriptText();
+  const safeTimestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const requestedPath = targetPath?.trim()
+    ? path.resolve(targetPath.trim())
+    : path.resolve(process.cwd(), `terminal-webgpu-llm-transcript-${safeTimestamp}.txt`);
+  const fallbackPath = path.join(os.tmpdir(), `terminal-webgpu-llm-transcript-${safeTimestamp}.txt`);
+
+  let resolvedPath = requestedPath;
+  try {
+    mkdirSync(path.dirname(resolvedPath), { recursive: true });
+    writeFileSync(resolvedPath, `${transcriptText}\n`, "utf8");
+  } catch (error) {
+    resolvedPath = fallbackPath;
+    mkdirSync(path.dirname(resolvedPath), { recursive: true });
+    writeFileSync(resolvedPath, `${transcriptText}\n`, "utf8");
+    logLine(
+      "debug",
+      `primary export path failed (${requestedPath}): ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  logLine("system", `transcript exported to ${resolvedPath}`);
+
+  execFile("pbcopy", [], { input: transcriptText }, (error) => {
+    if (error) {
+      logLine("debug", `pbcopy unavailable: ${error.message}`);
+      return;
+    }
+    logLine("system", "transcript copied to clipboard");
+  });
 }
 
 async function readJsonBody(req) {
@@ -337,6 +473,7 @@ const apiServer = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && url.pathname === "/v1/load") {
       const payload = await readJsonBody(req);
+      debugLog("api /v1/load payload", payload);
       const model = typeof payload.model === "string" && payload.model.trim()
         ? payload.model.trim()
         : currentModel;
@@ -348,6 +485,15 @@ const apiServer = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && url.pathname === "/v1/chat/completions") {
       const payload = await readJsonBody(req);
+      debugLog("api /v1/chat/completions payload", {
+        model: payload?.model,
+        stream: payload?.stream,
+        messageCount: Array.isArray(payload?.messages) ? payload.messages.length : 0,
+        roles: Array.isArray(payload?.messages) ? payload.messages.map((message) => message?.role) : [],
+        response_format: payload?.response_format,
+        temperature: payload?.temperature,
+        max_tokens: payload?.max_tokens,
+      });
       if (payload.stream === true) {
         await streamChatCompletion(payload, res);
         return;
@@ -359,7 +505,14 @@ const apiServer = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && url.pathname === "/v1/responses") {
       const payload = await readJsonBody(req);
+      debugLog("api /v1/responses payload", summarizeChatPayload(buildResponsesPayload(payload)));
       const chatPayload = buildResponsesPayload(payload);
+      debugLog("api /v1/responses mapped chat payload", {
+        model: chatPayload?.model,
+        stream: chatPayload?.stream,
+        messageCount: Array.isArray(chatPayload?.messages) ? chatPayload.messages.length : 0,
+        response_format: chatPayload?.response_format,
+      });
 
       if (chatPayload.stream === true) {
         res.writeHead(200, {
@@ -447,7 +600,7 @@ const apiServer = http.createServer(async (req, res) => {
 });
 
 async function ensureBrowser() {
-  if (browser && page) {
+  if (browser && page && !page.isClosed()) {
     return;
   }
 
@@ -527,10 +680,40 @@ async function ensureBrowser() {
   await page.waitForFunction(() => window.tuiRendererReady === true);
 }
 
+async function resetBrowser() {
+  try {
+    await browser?.close();
+  } catch {
+    // Ignore browser teardown issues.
+  }
+  browser = undefined;
+  page = undefined;
+}
+
+function isExecutionContextDestroyed(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("Execution context was destroyed");
+}
+
+async function evaluateWithRecovery(callback, payload) {
+  await ensureBrowser();
+  try {
+    return await page.evaluate(callback, payload);
+  } catch (error) {
+    if (!isExecutionContextDestroyed(error)) {
+      throw error;
+    }
+    logLine("system", "renderer context was replaced; recovering hidden browser page");
+    await resetBrowser();
+    await ensureBrowser();
+    return page.evaluate(callback, payload);
+  }
+}
+
 async function loadModel(model) {
   currentModel = model;
   renderStatus(`loading ${model}`);
-  await page.evaluate(
+  await evaluateWithRecovery(
     (request) => window.tuiLoad?.(request),
     { model },
   );
@@ -539,17 +722,29 @@ async function loadModel(model) {
 async function createChatCompletion(requestPayload) {
   await ensureBrowser();
   const model = currentModel;
+  const userPrompt = extractLastUserMessage(requestPayload?.messages);
 
   renderStatus(`api request ${model}`);
   logLine("api", `chat request on ${model}`);
+  if (userPrompt) {
+    logLine("user", userPrompt);
+  }
 
-  const completion = await page.evaluate(
+  const completion = await evaluateWithRecovery(
     (request) => window.tuiChat?.(request),
     {
       ...requestPayload,
       model,
     },
   );
+
+  const answer = extractCompletionText(completion);
+  if (answer) {
+    logLine("assistant", answer);
+  } else {
+    logLine("assistant", "(empty response from model)");
+    logLine("debug", `raw completion payload:\n${compactPayload(completion)}`);
+  }
 
   renderStatus("ready");
   return completion;
@@ -559,6 +754,9 @@ async function streamChatCompletion(requestPayload, res) {
   await ensureBrowser();
   const model = currentModel;
   const requestId = crypto.randomUUID();
+  const userPrompt = extractLastUserMessage(requestPayload?.messages);
+  let assistantText = "";
+  const assistantLineIndex = appendTranscriptLine(() => formatPrimaryTranscriptEntry("assistant", assistantText || ""));
 
   res.writeHead(200, {
     "Content-Type": "text/event-stream; charset=utf-8",
@@ -568,13 +766,23 @@ async function streamChatCompletion(requestPayload, res) {
 
   renderStatus(`api stream ${model}`);
   logLine("api", `stream request on ${model}`);
+  if (userPrompt) {
+    logLine("user", userPrompt);
+  }
 
   await new Promise((resolve, reject) => {
     pendingStreams.set(requestId, {
       onChunk(chunk) {
+        assistantText += extractChunkText(chunk);
+        replaceTranscriptLine(assistantLineIndex, () => formatPrimaryTranscriptEntry("assistant", assistantText || " "));
         sseWrite(res, null, buildChatCompletionChunk(model, chunk));
       },
       onDone() {
+        if (!assistantText) {
+          assistantText = "(no response)";
+          replaceTranscriptLine(assistantLineIndex, () => formatPrimaryTranscriptEntry("assistant", assistantText));
+          logLine("debug", `raw streamed completion request finished without text for model ${model}`);
+        }
         sseWrite(res, null, "[DONE]");
         res.end();
         renderStatus("ready");
@@ -591,14 +799,14 @@ async function streamChatCompletion(requestPayload, res) {
       }
       pendingStreams.delete(requestId);
       try {
-        await page.evaluate(() => window.tuiAbortStream?.());
+        await evaluateWithRecovery(() => window.tuiAbortStream?.());
       } catch {
         // Ignore abort race conditions.
       }
       resolve();
     });
 
-    page.evaluate(
+    evaluateWithRecovery(
       (request) => window.tuiChatStream?.(request),
       {
         ...requestPayload,
@@ -649,7 +857,7 @@ function refreshKnownModelsInBackground() {
 }
 
 async function showCachedModels() {
-  const payload = await page.evaluate(
+  const payload = await evaluateWithRecovery(
     (request) => window.tuiListCachedModels?.(request),
     { models: knownModels },
   );
@@ -666,7 +874,7 @@ async function showCachedModels() {
 }
 
 async function clearModelCache(model) {
-  await page.evaluate(
+  await evaluateWithRecovery(
     (request) => window.tuiClearModel?.(request),
     { model },
   );
@@ -735,7 +943,7 @@ async function sendPrompt(prompt) {
       },
     });
 
-    page.evaluate(
+    evaluateWithRecovery(
       (request) => window.tuiChatStream?.(request),
       {
         model: currentModel,
@@ -925,6 +1133,16 @@ async function handlePromptSubmit(rawValue) {
       return;
     }
 
+    if (prompt.startsWith("/export-transcript")) {
+      const exportPath = prompt.slice("/export-transcript".length).trim();
+      try {
+        exportTranscript(exportPath);
+      } catch (error) {
+        logLine("error", error instanceof Error ? error.message : String(error));
+      }
+      return;
+    }
+
     try {
       await sendPrompt(prompt);
     } catch (error) {
@@ -1019,7 +1237,10 @@ async function main() {
     logLine("system", "renderer ready on internal-only localhost port");
   }
   logLine("system", `api ready on http://${host}:${apiPort}`);
-  logLine("system", "Commands: /models, /refresh-models, /model <id>, /load, /cache, /clear-cache <id>, /clear-chat.");
+  logLine(
+    "system",
+    "Commands: /models, /refresh-models, /model <id>, /load, /cache, /clear-cache <id>, /clear-chat, /export-transcript [path].",
+  );
   renderStatus("ready");
   refreshKnownModelsInBackground();
   setFocusedView(2);
