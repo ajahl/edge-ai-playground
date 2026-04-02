@@ -1,7 +1,7 @@
 import { TerminalWebgpuApiClient } from "./lib/api-client.mjs";
 import { runAgentLoop } from "./lib/agent-loop.mjs";
 import { benchmarkCases, getBenchmarkCase } from "./lib/benchmarks.mjs";
-import { TerminalUI, UILogger, SummaryLogger, SilentLogger } from "./lib/terminal-ui.mjs";
+import { TerminalUI, UILogger, SummaryLogger, SilentLogger, FileLogger, CombinedLogger } from "./lib/terminal-ui.mjs";
 
 const ui = new TerminalUI();
 
@@ -13,6 +13,7 @@ function parseArgs(args) {
     interactive: true,
     verbose: false,
     silent: false,
+    logFile: null,
   };
 
   const free = [];
@@ -49,6 +50,11 @@ function parseArgs(args) {
       options.silent = true;
       continue;
     }
+    if (value === "--log-file") {
+      options.logFile = args[index + 1] || null;
+      index += 1;
+      continue;
+    }
     free.push(value);
   }
 
@@ -77,6 +83,27 @@ function summarizeRuns(results) {
     minMs: Math.min(...results.map((entry) => entry.elapsedMs)),
     maxMs: Math.max(...results.map((entry) => entry.elapsedMs)),
   };
+}
+
+function createLogger(verbose = false, silent = false, logFile = null) {
+  let logger;
+  let actualLogFile = null;
+  
+  if (verbose) {
+    logger = new UILogger(ui);
+  } else if (silent) {
+    logger = new SilentLogger();
+  } else {
+    logger = new SummaryLogger(ui);
+  }
+  
+  if (logFile) {
+    const fileLogger = new FileLogger(logFile);
+    actualLogFile = fileLogger.filePath;
+    logger = new CombinedLogger(logger, fileLogger);
+  }
+  
+  return { logger, actualLogFile };
 }
 
 async function selectBenchmarkCase() {
@@ -136,17 +163,13 @@ async function selectModel(api) {
   }
 }
 
-async function runBenchmarkRun(api, prompt, caseData, runNumber, totalRuns, verbose = false, silent = false) {
+async function runBenchmarkRun(api, prompt, caseData, runNumber, totalRuns, verbose = false, silent = false, logFile = null) {
   ui.section(`Run ${runNumber}/${totalRuns}`);
   console.log(`${ui.colors.dim}Prompt: ${prompt}${ui.colors.reset}\n`);
 
-  let logger;
-  if (verbose) {
-    logger = new UILogger(ui);
-  } else if (silent) {
-    logger = new SilentLogger();
-  } else {
-    logger = new SummaryLogger(ui);
+  const { logger, actualLogFile } = createLogger(verbose, silent, logFile);
+  if (actualLogFile && runNumber === 1) {
+    console.log(`${ui.colors.dim}Logging to: ${actualLogFile}${ui.colors.reset}\n`);
   }
 
   const result = await runAgentLoop({
@@ -167,6 +190,22 @@ async function runBenchmarkRun(api, prompt, caseData, runNumber, totalRuns, verb
   ui.section("Run Metrics");
   ui.metric("Steps", result.step);
   ui.metric("Time", result.elapsedMs, "ms", ui.colors.green);
+
+  if (logger.close) {
+    await logger.close();
+  }
+
+  // Append results to log file if logging was enabled
+  if (logFile && logger.getSecondary) {
+    const fileLogger = logger.getSecondary();
+    if (fileLogger?.appendResults) {
+      await fileLogger.appendResults(result);
+    }
+  }
+
+  // Track logger and log file for benchmark summary
+  result._logger = logger;
+  result._actualLogFile = actualLogFile;
 
   return result;
 }
@@ -221,14 +260,36 @@ async function interactiveMode(verbose = false) {
       }
 
       ui.blank();
+      
+      // Ask for logging options
+      const verboseAnswer = await ui.confirm("Show verbose debug output?");
+      const logFileAnswer = await ui.confirm("Save debug log to file?");
+      let logFile = null;
+      if (logFileAnswer) {
+        const now = new Date();
+        const timestamp = now.toISOString().split('.')[0].replace(/:/g, '-'); // e.g., 2026-04-02T13-13-07
+        const defaultName = `benchmark-${timestamp}.log`;
+        logFile = await ui.input(`Log file name (default: ${defaultName}):`);
+        if (!logFile) logFile = defaultName;
+      }
+      
+      ui.blank();
       ui.info("Starting benchmark...");
       ui.blank();
 
       const results = [];
+      let trackingLogger = null;
+      let trackingLogFile = null;
+      
       for (let run = 1; run <= runs; run += 1) {
         try {
-          const result = await runBenchmarkRun(api, prompt, caseData, run, runs, verbose);
+          const result = await runBenchmarkRun(api, prompt, caseData, run, runs, verboseAnswer, false, logFile);
           results.push(result);
+          // Track the logger from the first run to use for benchmark summary
+          if (run === 1 && logFile) {
+            trackingLogger = result._logger;
+            trackingLogFile = result._actualLogFile;
+          }
         } catch (error) {
           ui.error(`Run ${run} failed: ${error.message}`);
         }
@@ -241,6 +302,15 @@ async function interactiveMode(verbose = false) {
         const summary = summarizeRuns(results);
         ui.benchmark(summary);
         ui.blank();
+        
+        // Append benchmark summary to log file if applicable
+        if (logFile && trackingLogger && trackingLogger.appendBenchmarkSummary) {
+          await trackingLogger.appendBenchmarkSummary(summary, trackingLogFile);
+        }
+        
+        if (logFile) {
+          ui.info(`Debug log saved to file (check console output for actual path)`);
+        }
       }
 
       await ui.input("Press Enter to continue...");
@@ -266,8 +336,8 @@ async function interactiveMode(verbose = false) {
 }
 
 async function nonInteractiveMode(options) {
-  const logger = options.verbose ? console : new SilentLogger();
-  const api = new TerminalWebgpuApiClient({ model: options.model, logger });
+  const { logger: apiLogger, actualLogFile: apiLogFile } = createLogger(options.verbose, options.silent, options.logFile);
+  const api = new TerminalWebgpuApiClient({ model: options.model, logger: apiLogger });
 
   try {
     const health = await api.health();
@@ -280,23 +350,22 @@ async function nonInteractiveMode(options) {
 
     console.log(`benchmark prompt: ${options.prompt}`);
     console.log(`runs: ${options.runs}`);
+    if (apiLogFile) {
+      console.log(`logging to: ${apiLogFile}`);
+    }
 
     const results = [];
     for (let run = 1; run <= options.runs; run += 1) {
       console.log(`\n=== run ${run}/${options.runs} ===`);
-      let debugLogger;
-      if (options.verbose) {
-        debugLogger = console;
-      } else if (options.silent) {
-        debugLogger = new SilentLogger();
-      } else {
-        debugLogger = new SummaryLogger(ui);
-      }
+      const { logger: agentLogger } = createLogger(options.verbose, options.silent, options.logFile);
       const result = await runAgentLoop({
         api,
         userPrompt: options.prompt,
-        logger: debugLogger,
+        logger: agentLogger,
       });
+      if (agentLogger.close) {
+        await agentLogger.close();
+      }
       results.push(result);
       console.log("\nfinal answer:\n");
       console.log(result.answer);
@@ -309,13 +378,20 @@ async function nonInteractiveMode(options) {
     const summary = summarizeRuns(results);
     console.log("\nbenchmark summary:\n");
     console.log(JSON.stringify(summary, null, 2));
+
+    if (apiLogger.close) {
+      await apiLogger.close();
+    }
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
+    if (apiLogger.close) {
+      await apiLogger.close();
+    }
     process.exit(1);
   }
 }
 
-async function quickSetupMode(verbose = false, silent = false) {
+async function quickSetupMode(verbose = false, silent = false, logFile = null) {
   ui.clear();
   ui.header("Terminal WebGPU LLM Benchmark");
   ui.blank();
@@ -357,7 +433,7 @@ async function quickSetupMode(verbose = false, silent = false) {
   const results = [];
   for (let run = 1; run <= runs; run += 1) {
     try {
-      const result = await runBenchmarkRun(api, prompt, caseData, run, runs, verbose, silent);
+      const result = await runBenchmarkRun(api, prompt, caseData, run, runs, verbose, silent, logFile);
       results.push(result);
     } catch (error) {
       ui.error(`Run ${run} failed: ${error.message}`);
@@ -390,9 +466,9 @@ async function main() {
   if (hasCliArgs) {
     // CLI mode with arguments
     if (!prompt) {
-      console.error("Usage: pnpm start -- [--model MODEL_ID] [--runs N] [--case CASE_ID] [--verbose] [--silent] \"your task here\"");
+      console.error("Usage: pnpm start -- [--model MODEL_ID] [--runs N] [--case CASE_ID] [--verbose] [--silent] [--log-file FILE] \"your task here\"");
       console.error("       pnpm start -- --list-cases");
-      console.error("       pnpm start -- [--no-interactive] [--verbose] [--silent]");
+      console.error("       pnpm start -- [--no-interactive] [--verbose] [--silent] [--log-file FILE]");
       process.exit(1);
     }
 
@@ -405,7 +481,7 @@ async function main() {
     await interactiveMode(options.verbose);
   } else {
     // Quick setup mode (--no-interactive without args)
-    await quickSetupMode(options.verbose, options.silent);
+    await quickSetupMode(options.verbose, options.silent, options.logFile);
   }
 }
 

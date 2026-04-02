@@ -1,4 +1,6 @@
 import readline from "readline";
+import { createWriteStream } from "fs";
+import { resolve } from "path";
 
 const colors = {
   reset: "\x1b[0m",
@@ -318,4 +320,159 @@ export class SilentLogger {
   error() {}
   warn() {}
   info() {}
+}
+
+export class FileLogger {
+  constructor(filePath) {
+    // Add timestamp to filename
+    const path = resolve(filePath);
+    const lastDot = path.lastIndexOf('.');
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5); // e.g., 2026-04-02T12-30-45
+    
+    const finalPath = lastDot > 0 
+      ? path.slice(0, lastDot) + `-${timestamp}` + path.slice(lastDot)
+      : path + `-${timestamp}`;
+    
+    this.filePath = finalPath;
+    this.stream = createWriteStream(this.filePath, { flags: 'a', encoding: 'utf-8' });
+    this.stream.write(`\n${"=".repeat(80)}\nSession started at ${new Date().toISOString()}\n${"=".repeat(80)}\n`);
+  }
+
+  write(message) {
+    const timestamp = new Date().toISOString();
+    const text = String(message).replace(/\x1b\[[0-9;]*m/g, ''); // Remove ANSI color codes
+    this.stream.write(`[${timestamp}] ${text}\n`);
+  }
+
+  log(message) {
+    this.write(message);
+  }
+
+  error(message) {
+    this.write(`ERROR: ${message}`);
+  }
+
+  warn(message) {
+    this.write(`WARN: ${message}`);
+  }
+
+  info(message) {
+    this.write(`INFO: ${message}`);
+  }
+
+  close() {
+    return new Promise((resolve) => {
+      this.stream.end(() => {
+        resolve();
+      });
+    });
+  }
+
+  appendResults(result) {
+    return new Promise((resolve) => {
+      this.stream = createWriteStream(this.filePath, { flags: 'a', encoding: 'utf-8' });
+      const separator = '─'.repeat(80);
+      
+      // Final Answer section
+      if (result.answer) {
+        this.stream.write(`\n▶ Final Answer\n${separator}\n`);
+        this.stream.write(`${result.answer}\n`);
+      }
+      
+      // Summary section
+      if (result.reasoning) {
+        this.stream.write(`\n▶ Summary\n${separator}\n`);
+        this.stream.write(`${result.reasoning}\n`);
+      }
+      
+      // Validation section
+      if (result.validation) {
+        this.stream.write(`\nValidation Results\n`);
+        const passed = result.validation?.checks?.every((c) => c.passed);
+        const icon = passed ? '✓' : '✗';
+        this.stream.write(`${icon} Overall: ${passed ? 'PASSED' : 'FAILED'}\n\n`);
+        
+        result.validation?.checks?.forEach((check) => {
+          const checkIcon = check.passed ? '✓' : '✗';
+          this.stream.write(`  ${checkIcon} ${check.name}\n`);
+          if (check.details) {
+            this.stream.write(`     ${check.details}\n`);
+          }
+        });
+      }
+      
+      // Metrics section
+      this.stream.write(`\n\nRun Metrics\n`);
+      this.stream.write(`  Steps: ${(result.step).toFixed(2)}\n`);
+      this.stream.write(`  Time: ${result.elapsedMs}ms\n`);
+      
+      this.stream.end(() => {
+        resolve();
+      });
+    });
+  }
+
+  appendBenchmarkSummary(summary, actualLogFile) {
+    return new Promise((resolve) => {
+      this.stream = createWriteStream(this.filePath, { flags: 'a', encoding: 'utf-8' });
+      const separator = '═'.repeat(80);
+      
+      this.stream.write(`\n${separator}\n`);
+      this.stream.write(`  Benchmark Summary\n`);
+      this.stream.write(`${separator}\n\n`);
+      
+      this.stream.write(`Benchmark Results\n`);
+      this.stream.write(`  Total Runs: ${(summary.runs).toFixed(2)}\n`);
+      this.stream.write(`  Avg Time: ${summary.avgMs}ms\n`);
+      this.stream.write(`  Avg Steps: ${(summary.avgSteps).toFixed(2)}\n`);
+      this.stream.write(`  Min Time: ${summary.minMs}ms\n`);
+      this.stream.write(`  Max Time: ${summary.maxMs}ms\n`);
+      
+      if (actualLogFile) {
+        this.stream.write(`\nℹ Debug log saved to file: ${actualLogFile}\n`);
+      }
+      
+      this.stream.end(() => {
+        resolve();
+      });
+    });
+  }
+}
+
+export class CombinedLogger {
+  constructor(primary, secondary) {
+    this.primary = primary;
+    this.secondary = secondary;
+  }
+
+  log(message) {
+    this.primary.log?.(message);
+    this.secondary.log?.(message);
+  }
+
+  error(message) {
+    this.primary.error?.(message);
+    this.secondary.error?.(message);
+  }
+
+  warn(message) {
+    this.primary.warn?.(message);
+    this.secondary.warn?.(message);
+  }
+
+  info(message) {
+    this.primary.info?.(message);
+    this.secondary.info?.(message);
+  }
+
+  getSecondary() {
+    return this.secondary;
+  }
+
+  close() {
+    const promises = [];
+    if (this.primary.close) promises.push(this.primary.close());
+    if (this.secondary.close) promises.push(this.secondary.close());
+    return Promise.all(promises);
+  }
 }
