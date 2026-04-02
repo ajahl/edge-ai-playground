@@ -17,8 +17,10 @@ export const rendererListenPort = exposeRenderer ? Number(process.env.PORT || 51
 export const apiPort = Number(process.env.API_PORT || 5179);
 
 export const builtInModels = [
+  "Qwen2.5-Coder-3B-Instruct-q4f32_1-MLC",
   "Qwen2.5-Coder-3B-Instruct-q4f16_1-MLC",
   "Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC",
+  "Qwen2.5-Coder-0.5B-Instruct-q4f32_1-MLC",
   "Llama-3.2-1B-Instruct-q4f16_1-MLC",
   "Hermes-3-Llama-3.1-8B-q4f16_1-MLC",
   "Qwen3-8B-q4f16_1-MLC",
