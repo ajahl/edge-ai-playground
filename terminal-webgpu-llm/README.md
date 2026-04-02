@@ -37,6 +37,65 @@ Startup with an explicit model id:
 pnpm start -- Qwen2.5-Coder-3B-Instruct-q4f16_1-MLC
 ```
 
+## Docker
+
+Build the image:
+
+```bash
+cd terminal-webgpu-llm
+docker build -t terminal-webgpu-llm .
+```
+
+Run the TUI and expose the local API from the container:
+
+```bash
+docker run --rm -it -p 5179:5179 terminal-webgpu-llm
+```
+
+Run with a startup model:
+
+```bash
+docker run --rm -it -p 5179:5179 \
+  -e MODEL=Llama-3.1-8B-Instruct-q4f16_1-MLC \
+  terminal-webgpu-llm
+```
+
+From another terminal on the host:
+
+```bash
+curl http://127.0.0.1:5179/health
+```
+
+### Docker GPU Notes
+
+For actual WebLLM inference, the hidden Chromium runtime inside the container generally needs GPU/WebGPU access.
+
+Linux is the realistic target for this:
+
+- Intel / AMD often starts with `/dev/dri` passthrough:
+
+```bash
+docker run --rm -it \
+  -p 5179:5179 \
+  --device /dev/dri \
+  terminal-webgpu-llm
+```
+
+- NVIDIA usually requires NVIDIA Container Toolkit and then:
+
+```bash
+docker run --rm -it \
+  -p 5179:5179 \
+  --gpus all \
+  terminal-webgpu-llm
+```
+
+On macOS, especially with Docker Desktop or Colima, this container should be treated as experimental for real inference:
+
+- the container runs inside a Linux VM
+- hidden Chromium inside that VM does not get native macOS WebGPU access in the same way as a local browser
+- the process may start, but actual WebGPU model execution is not something to rely on
+
 ## Commands
 
 - type a prompt and press `Enter`
@@ -103,6 +162,7 @@ Current limitations:
 
 Environment variables:
 
+- `HOST`: bind address for the local servers, default `127.0.0.1`
 - `PORT`: hidden renderer/static server port, default `5178`
 - `API_PORT`: external API port, default `5179`
 - `MODEL`: optional startup model fallback if no CLI model id is passed
@@ -112,4 +172,6 @@ Environment variables:
 - This is terminal-only in UX, not browser-free in runtime.
 - WebLLM still needs a browser runtime for WebGPU.
 - Playwright-managed Chromium must be available.
+- The Docker image installs Chromium explicitly and points `playwright-core` at that binary.
+- Dockerized runtime is mainly practical on Linux hosts with working GPU/device passthrough.
 - Hugging Face models are filtered against the `binary-mlc-llm-libs` `v0_2_80` WebGPU wasm directory.

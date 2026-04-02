@@ -6,7 +6,7 @@ const __dirname = path.dirname(__filename);
 const projectDir = path.resolve(__dirname, "..");
 
 export const distDir = path.join(projectDir, "dist");
-export const host = "127.0.0.1";
+export const host = process.env.HOST || "127.0.0.1";
 
 export const cliArgs = process.argv.slice(2);
 export const exposeRenderer = cliArgs.includes("--expose-renderer");
