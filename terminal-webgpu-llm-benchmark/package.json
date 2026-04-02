@@ -1,0 +1,15 @@
+{
+  "name": "terminal-webgpu-llm-benchmark",
+  "version": "0.1.0",
+  "description": "Interactive benchmark suite for Terminal WebGPU LLM models with agentic AI loops",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node cli.mjs",
+    "agent": "node agent.mjs",
+    "benchmark": "node cli.mjs --no-interactive"
+  },
+  "dependencies": {
+    "ws": "^8.20.0"
+  }
+}
