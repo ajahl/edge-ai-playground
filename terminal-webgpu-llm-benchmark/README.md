@@ -4,11 +4,11 @@ An interactive terminal-based benchmark suite for LLM models running on Terminal
 
 ## Features
 
-- 🎯 **Interactive CLI** - Rich terminal UI with menus, progress bars, and formatted output
-- 🤖 **Agentic AI Loops** - Multi-step reasoning with tool use and validation
-- 📊 **Benchmark Suite** - Pre-configured benchmark cases with validation
-- 📝 **Flexible Logging** - Optional file logging with automatic timestamps
-- 🔍 **Three Output Modes**:
+- **Interactive CLI** - Rich terminal UI with menus, progress bars, and formatted output
+- **Agentic AI Loops** - Multi-step reasoning with tool use and validation
+- **Benchmark Suite** - Pre-configured benchmark cases with validation
+- **Flexible Logging** - Optional file logging with automatic timestamps
+- **Three Output Modes**:
   - **Summary** (default) - Clean, step-by-step progress display
   - **Verbose** (`--verbose`) - Full API request/response debug output
   - **Silent** (`--silent`) - Minimal output, errors only
@@ -17,6 +17,64 @@ An interactive terminal-based benchmark suite for LLM models running on Terminal
 
 ```bash
 pnpm install
+```
+
+## Docker
+
+Build the benchmark image:
+
+```bash
+cd terminal-webgpu-llm-benchmark
+docker build -t terminal-webgpu-llm-benchmark .
+```
+
+The benchmark container does not host WebLLM itself. It needs a reachable
+`terminal-webgpu-llm` API container.
+
+Example with both containers on the same Docker network:
+
+```bash
+docker network create webgpu-llm-net
+```
+
+Run the `terminal-webgpu-llm` container first:
+
+```bash
+docker run --rm -it \
+  --name terminal-webgpu-llm \
+  --network webgpu-llm-net \
+  -p 5179:5179 \
+  terminal-webgpu-llm
+```
+
+Run the benchmark container against it:
+
+```bash
+docker run --rm -it \
+  --network webgpu-llm-net \
+  -e TERMINAL_WEBGPU_LLM_API_URL=http://terminal-webgpu-llm:5179 \
+  terminal-webgpu-llm-benchmark
+```
+
+That starts the interactive benchmark UI by default.
+
+You can still override the command for a non-interactive run:
+
+```bash
+docker run --rm -it \
+  --network webgpu-llm-net \
+  -e TERMINAL_WEBGPU_LLM_API_URL=http://terminal-webgpu-llm:5179 \
+  terminal-webgpu-llm-benchmark \
+  node cli.mjs --no-interactive --case models_and_time_validated
+```
+
+You can also override the API endpoint explicitly:
+
+```bash
+docker run --rm -it \
+  -e TERMINAL_WEBGPU_LLM_API_URL=http://host.docker.internal:5179 \
+  terminal-webgpu-llm-benchmark \
+  node agent.mjs -- --case direct_hello
 ```
 
 ## Usage
@@ -104,11 +162,11 @@ pnpm start -- --list-cases
 Shows step-by-step progress without verbose details:
 
 ```
-Step 1: 🤔 generating
+Step 1: generating
   → Tool: list_models
-Step 2: 🤔 generating
+Step 2: generating
   → Tool: current_time
-Step 3: 🤔 generating
+Step 3: generating
 
 ▶ Final Answer
 model_count: 47
@@ -331,7 +389,3 @@ Select a model from the available list via the interactive menu or specify with 
 ### Log File Size
 
 Verbose logging creates large files. Use `--silent --log-file` to log only important events.
-
-## License
-
-MIT
