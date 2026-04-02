@@ -5,6 +5,7 @@ let engine: webllm.MLCEngineInterface | null = null;
 let loadPromise: Promise<void> | null = null;
 let loadedModel: string | null = null;
 let streamAbortRequested = false;
+let diagnosticsLogged = false;
 
 function emit(type: string, payload?: unknown) {
   window.bridgeEmit?.({ type, payload });
@@ -138,6 +139,54 @@ function debug(label: string, payload?: unknown) {
   emit("log", `[debug] ${label}: ${formatDebugPayload(payload)}`);
 }
 
+async function logWebGPUDiagnostics() {
+  if (diagnosticsLogged) {
+    return;
+  }
+  diagnosticsLogged = true;
+
+  if (!("gpu" in navigator)) {
+    emit("log", "[debug] webgpu diagnostics: navigator.gpu unavailable");
+    return;
+  }
+
+  try {
+    const adapter = await navigator.gpu.requestAdapter();
+    if (!adapter) {
+      emit("log", "[debug] webgpu diagnostics: no adapter available");
+      return;
+    }
+
+    const adapterInfo = "requestAdapterInfo" in adapter
+      ? await (adapter as GPUAdapter & { requestAdapterInfo?: () => Promise<Record<string, unknown>> }).requestAdapterInfo?.()
+      : undefined;
+
+    const device = await adapter.requestDevice();
+    const interestingLimits = {
+      maxBufferSize: device.limits.maxBufferSize,
+      maxStorageBufferBindingSize: device.limits.maxStorageBufferBindingSize,
+      maxComputeInvocationsPerWorkgroup: device.limits.maxComputeInvocationsPerWorkgroup,
+      maxComputeWorkgroupSizeX: device.limits.maxComputeWorkgroupSizeX,
+      maxComputeWorkgroupSizeY: device.limits.maxComputeWorkgroupSizeY,
+      maxComputeWorkgroupSizeZ: device.limits.maxComputeWorkgroupSizeZ,
+      maxComputeWorkgroupsPerDimension: device.limits.maxComputeWorkgroupsPerDimension,
+    };
+
+    emit("log", `[debug] webgpu adapter: ${formatDebugPayload({
+      vendor: adapterInfo?.vendor,
+      architecture: adapterInfo?.architecture,
+      device: adapterInfo?.device,
+      description: adapterInfo?.description,
+      fallback: adapter.isFallbackAdapter,
+    })}`);
+    emit("log", `[debug] webgpu limits: ${formatDebugPayload(interestingLimits)}`);
+
+    device.destroy();
+  } catch (error) {
+    emit("log", `[debug] webgpu diagnostics error: ${formatDebugPayload(summarizeError(error))}`);
+  }
+}
+
 async function ensureLoaded(modelId = DEFAULT_MODEL) {
   debug("ensureLoaded called", {
     modelId,
@@ -151,6 +200,7 @@ async function ensureLoaded(modelId = DEFAULT_MODEL) {
 
   loadPromise = (async () => {
     if (!engine) {
+      await logWebGPUDiagnostics();
       debug("creating engine", { modelId });
       engine = new webllm.MLCEngine({
         initProgressCallback(report) {

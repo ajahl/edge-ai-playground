@@ -163,6 +163,7 @@ Current limitations:
 Environment variables:
 
 - `HOST`: bind address for the local servers, default `127.0.0.1`
+- `BROWSER_HOST`: host used by the hidden Chromium renderer to reach the internal page, default `127.0.0.1` when `HOST=0.0.0.0`
 - `PORT`: hidden renderer/static server port, default `5178`
 - `API_PORT`: external API port, default `5179`
 - `MODEL`: optional startup model fallback if no CLI model id is passed

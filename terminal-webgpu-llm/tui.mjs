@@ -6,6 +6,7 @@ import { execFile } from "node:child_process";
 import { chromium } from "playwright-core";
 import {
   apiPort,
+  browserHost,
   builtInModels,
   defaultModel,
   distDir,
@@ -73,7 +74,7 @@ const {
   knownModelsCount: knownModels.length,
   attachedUrlTitle: attachedUrlContext?.title ?? null,
   apiPort,
-  rendererLabel: exposeRenderer ? `renderer http://${host}:${rendererPort}` : "renderer internal-only",
+  rendererLabel: exposeRenderer ? `renderer http://${browserHost}:${rendererPort}` : "renderer internal-only",
   apiUrl: `http://${host}:${apiPort}`,
   historyCount: history.length,
   builtInModelsCount: builtInModels.length,
@@ -676,7 +677,7 @@ async function ensureBrowser() {
     logLine("browser", msg.text());
   });
 
-  await page.goto(`http://${host}:${rendererPort}/`, { waitUntil: "networkidle" });
+  await page.goto(`http://${browserHost}:${rendererPort}/`, { waitUntil: "networkidle" });
   await page.waitForFunction(() => window.tuiRendererReady === true);
 }
 
