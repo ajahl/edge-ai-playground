@@ -15,6 +15,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
   chromium \
   ca-certificates \
+  dbus \
   fonts-liberation \
   libasound2 \
   libatk-bridge2.0-0 \
@@ -39,6 +40,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   libxfixes3 \
   libxkbcommon0 \
   libxrandr2 \
+  libvulkan1 \
+  mesa-vulkan-drivers \
+  vulkan-tools \
+  xauth \
+  xserver-xorg-core \
+  xserver-xorg-video-dummy \
+  x11-xserver-utils \
+  xvfb \
   xdg-utils \
   && rm -rf /var/lib/apt/lists/*
 
@@ -50,13 +59,25 @@ COPY --from=build /app/index.html ./index.html
 COPY --from=build /app/lib ./lib
 COPY --from=build /app/src ./src
 COPY --from=build /app/tui.mjs ./tui.mjs
+COPY docker-entrypoint.sh ./docker-entrypoint.sh
+COPY launch-chromium.sh ./launch-chromium.sh
+COPY xorg-dummy.conf ./xorg-dummy.conf
+
+RUN chmod +x ./docker-entrypoint.sh
+RUN chmod +x ./launch-chromium.sh
 
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV API_PORT=5179
-ENV PLAYWRIGHT_LAUNCH_OPTIONS_EXECUTABLE_PATH=/usr/bin/chromium
+ENV CHROMIUM_EXECUTABLE=/usr/bin/chromium
+ENV PLAYWRIGHT_LAUNCH_OPTIONS_EXECUTABLE_PATH=/app/launch-chromium.sh
 ENV TERM=xterm-256color
+ENV CHROMIUM_HEADLESS=true
+ENV DISPLAY=:99
+ENV XDG_RUNTIME_DIR=/tmp/runtime-root
+ENV DISPLAY_BACKEND=xvfb
+ENV GPU_WRAPPER=none
 
 EXPOSE 5179
 
-CMD ["node", "tui.mjs"]
+CMD ["./docker-entrypoint.sh"]

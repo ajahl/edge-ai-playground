@@ -7,7 +7,7 @@ It does not show a browser window, but it still uses a hidden Chromium page unde
 ## What It Does
 
 - serves a tiny hidden renderer page locally
-- launches headless Chromium with WebGPU flags
+- launches Chromium with WebGPU flags, either headless or under a virtual display
 - loads WebLLM in that hidden page
 - exposes a terminal chat UI using `blessed`
 - keeps multi-turn chat history as context
@@ -60,6 +60,59 @@ docker run --rm -it -p 5179:5179 \
   terminal-webgpu-llm
 ```
 
+Try a non-headless Chromium path inside a virtual display:
+
+```bash
+docker run --rm -it -p 5179:5179 \
+  -e CHROMIUM_HEADLESS=false \
+  terminal-webgpu-llm
+```
+
+That mode now starts:
+
+- `dbus-daemon`
+- `XDG_RUNTIME_DIR`
+- `Xvfb` by default
+- non-headless Chromium inside the virtual display
+
+Try an Xdummy-backed display server instead:
+
+```bash
+docker run --rm -it \
+  -p 5179:5179 \
+  --device /dev/dri \
+  -e CHROMIUM_HEADLESS=false \
+  -e DISPLAY_BACKEND=xdummy \
+  terminal-webgpu-llm
+```
+
+If your environment provides `vglrun`, you can also request a VirtualGL wrapper:
+
+```bash
+docker run --rm -it \
+  -p 5179:5179 \
+  --device /dev/dri \
+  -e CHROMIUM_HEADLESS=false \
+  -e DISPLAY_BACKEND=xdummy \
+  -e GPU_WRAPPER=virtualgl \
+  terminal-webgpu-llm
+```
+
+```bash
+docker run --rm -it \ 
+  -p 5179:5179 \
+  --gpus all \ 
+  -e NVIDIA_VISIBLE_DEVICES=all \
+  -e NVIDIA_DRIVER_CAPABILITIES=all \
+  --network webgpu-llm-net \ 
+  -e CHROMIUM_HEADLESS=false \
+  -e DISPLAY_BACKEND=xdummy \
+  -e GPU_WRAPPER=virtualgl \
+  terminal-webgpu-llm
+```
+
+Note: the current image wires the `GPU_WRAPPER=virtualgl` hook, but it does not install `VirtualGL` itself. That mode only helps if `vglrun` is available in the runtime image you are using.
+
 From another terminal on the host:
 
 ```bash
@@ -90,6 +143,16 @@ docker run --rm -it \
   terminal-webgpu-llm
 ```
 
+- If the headless Chromium path is unstable, you can try a virtual-display browser path:
+
+```bash
+docker run --rm -it \
+  -p 5179:5179 \
+  --device /dev/dri \
+  -e CHROMIUM_HEADLESS=false \
+  terminal-webgpu-llm
+```
+
 On macOS, especially with Docker Desktop or Colima, this container should be treated as experimental for real inference:
 
 - the container runs inside a Linux VM
@@ -108,7 +171,7 @@ On macOS, especially with Docker Desktop or Colima, this container should be tre
 - `/cache`: list cached models and total cache size
 - `/clear-cache <id>`: clear one model's cached downloads
 - `/clear-chat`: clear the conversation history
-- `/export-transcript`:
+- `/export-transcript [path]`: export the current transcript to a file and try copying it to the clipboard
 - `q` or `Ctrl+C`: quit
 
 ## API Access
@@ -164,6 +227,11 @@ Environment variables:
 
 - `HOST`: bind address for the local servers, default `127.0.0.1`
 - `BROWSER_HOST`: host used by the hidden Chromium renderer to reach the internal page, default `127.0.0.1` when `HOST=0.0.0.0`
+- `CHROMIUM_HEADLESS`: set to `false` to run Chromium under a virtual display instead of headless mode inside the container
+- `DISPLAY_BACKEND`: choose `xvfb` or `xdummy` for the non-headless container browser mode
+- `GPU_WRAPPER`: choose `virtualgl` to launch Chromium through `vglrun` when available
+- `DISPLAY`: X display used for the non-headless browser mode, default `:99`
+- `XDG_RUNTIME_DIR`: runtime directory used by the container browser session, default `/tmp/runtime-root`
 - `PORT`: hidden renderer/static server port, default `5178`
 - `API_PORT`: external API port, default `5179`
 - `MODEL`: optional startup model fallback if no CLI model id is passed
@@ -174,5 +242,8 @@ Environment variables:
 - WebLLM still needs a browser runtime for WebGPU.
 - Playwright-managed Chromium must be available.
 - The Docker image installs Chromium explicitly and points `playwright-core` at that binary.
+- The Docker image can start Chromium either headless or under a virtual display when `CHROMIUM_HEADLESS=false`.
+- The non-headless browser path can use either `Xvfb` or `Xdummy`.
+- `GPU_WRAPPER=virtualgl` only takes effect if `vglrun` is available in the runtime image.
 - Dockerized runtime is mainly practical on Linux hosts with working GPU/device passthrough.
 - Hugging Face models are filtered against the `binary-mlc-llm-libs` `v0_2_80` WebGPU wasm directory.

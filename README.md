@@ -86,6 +86,7 @@ Use this when you want a terminal-first local chat tool with the same hidden-bro
 - Launches Playwright-managed Chromium in the background for the actual WebLLM/WebGPU runtime.
 - Exposes a localhost OpenAI-compatible API for use from another terminal.
 - Supports explicit model loading, cache inspection, streamed chat, and response performance reporting.
+- Includes an experimental Docker path, but meaningful inference there still depends on a Linux host with a working GPU/WebGPU container stack.
 - Best fit when you want a TUI plus machine-local API access at the same time.
 
 Typical dev flow:
@@ -211,6 +212,7 @@ pnpm build
 - All nine variants rely on WebGPU and browser-style runtimes for model execution.
 - The Chromium and Electron bridges are the right choices for machine-local REST access from terminal tools.
 - The terminal bridge gives you both a local TUI and a localhost API, but it still depends on a hidden Chromium renderer for actual inference.
+- The terminal bridge now has a Docker path too, but treat it as experimental unless you have a Linux GPU/container setup that Chromium can use successfully.
 - The benchmark harness depends on `terminal-webgpu-llm` being available first; it does not host WebLLM on its own.
 - The browser-hosted service is the lightest setup, but it depends on the page remaining open.
 - The Firefox extension keeps its WebLLM data inside the extension's own browser storage context.

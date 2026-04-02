@@ -48,6 +48,7 @@ let pasteInProgress = false;
 let lastPasteEndedAt = 0;
 let lastPromptInputAt = 0;
 let pendingSubmitTimer = null;
+const chromiumHeadless = process.env.CHROMIUM_HEADLESS !== "false";
 
 const PASTE_SUBMIT_GUARD_MS = 250;
 const ENTER_SUBMIT_DEBOUNCE_MS = 120;
@@ -614,11 +615,14 @@ async function ensureBrowser() {
 
   browser = await chromium.launch({
     executablePath,
-    headless: true,
+    headless: chromiumHeadless,
     args: [
       "--enable-unsafe-webgpu",
       "--ignore-gpu-blocklist",
       "--enable-features=Vulkan,UseSkiaRenderer",
+      "--enable-logging=stderr",
+      "--v=1",
+      "--vmodule=*gpu*=3",
       "--disable-dev-shm-usage",
       "--no-sandbox",
     ],

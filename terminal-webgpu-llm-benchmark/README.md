@@ -42,8 +42,23 @@ Run the `terminal-webgpu-llm` container first:
 ```bash
 docker run --rm -it \
   --name terminal-webgpu-llm \
+  --gpus all \
   --network webgpu-llm-net \
   -p 5179:5179 \
+  terminal-webgpu-llm
+```
+
+```bash
+docker run --rm -it \ 
+  --name terminal-webgpu-llm \
+  -p 5179:5179 \
+  --gpus all \ 
+  -e NVIDIA_VISIBLE_DEVICES=all \
+  -e NVIDIA_DRIVER_CAPABILITIES=all \
+  --network webgpu-llm-net \ 
+  -e CHROMIUM_HEADLESS=false \
+  -e DISPLAY_BACKEND=xdummy \
+  -e GPU_WRAPPER=virtualgl \
   terminal-webgpu-llm
 ```
 
