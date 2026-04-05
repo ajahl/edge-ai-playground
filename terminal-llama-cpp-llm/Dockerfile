@@ -1,0 +1,90 @@
+FROM nvidia/cuda:13.2.0-devel-ubuntu24.04 AS llama-build
+
+ARG LLAMA_CPP_REPO=https://github.com/ggml-org/llama.cpp.git
+ARG LLAMA_CPP_REF=master
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  build-essential \
+  ca-certificates \
+  cmake \
+  curl \
+  git \
+  libcurl4-openssl-dev \
+  ninja-build \
+  pkg-config \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+
+RUN git clone --depth 1 --branch "${LLAMA_CPP_REF}" "${LLAMA_CPP_REPO}" llama.cpp
+
+WORKDIR /src/llama.cpp
+
+RUN ln -sf /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1
+
+ENV LIBRARY_PATH=/usr/local/cuda/lib64/stubs:${LIBRARY_PATH}
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64/stubs:${LD_LIBRARY_PATH}
+
+RUN cmake -S . -B build -G Ninja \
+  -DGGML_CUDA=ON \
+  -DBUILD_SHARED_LIBS=ON \
+  -DLLAMA_BUILD_SERVER=ON \
+  -DLLAMA_BUILD_TOOLS=ON \
+  -DLLAMA_BUILD_EXAMPLES=OFF \
+  -DLLAMA_BUILD_TESTS=OFF \
+  -DCMAKE_EXE_LINKER_FLAGS="-L/usr/local/cuda/lib64/stubs" \
+  -DCMAKE_SHARED_LINKER_FLAGS="-L/usr/local/cuda/lib64/stubs" \
+  && cmake --build build -j"$(nproc)"
+
+RUN set -eu; \
+  mkdir -p /opt/llama-package/bin /opt/llama-package/lib; \
+  server_bin="$(find /src/llama.cpp/build -type f | grep -E '/(llama-server|server)$' | head -n 1)"; \
+  test -n "$server_bin"; \
+  cp "$server_bin" /opt/llama-package/bin/llama-server; \
+  find /src/llama.cpp/build \( -type f -o -type l \) -name 'libmtmd*.so*' -exec cp -a -n {} /opt/llama-package/lib/ \;; \
+  find /src/llama.cpp/build \( -type f -o -type l \) -name '*.so*' -exec cp -a -n {} /opt/llama-package/lib/ \;
+
+FROM nvidia/cuda:13.2.0-runtime-ubuntu24.04
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  ca-certificates \
+  curl \
+  gnupg \
+  libgomp1 \
+  tini \
+  && mkdir -p /etc/apt/keyrings \
+  && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
+  && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_24.x nodistro main" > /etc/apt/sources.list.d/nodesource.list \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends nodejs \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY package.json ./
+RUN corepack enable && pnpm install --prod --no-frozen-lockfile
+
+COPY lib ./lib
+COPY tui.mjs ./tui.mjs
+COPY README.md ./README.md
+COPY docker-entrypoint.sh ./docker-entrypoint.sh
+
+COPY --from=llama-build /opt/llama-package/bin/llama-server /app/llama-server
+COPY --from=llama-build /opt/llama-package/lib/ /app/lib/
+
+RUN chmod +x ./docker-entrypoint.sh /app/llama-server
+
+ENV LD_LIBRARY_PATH=/app/lib
+ENV NODE_ENV=production
+ENV HOST=0.0.0.0
+ENV API_PORT=8012
+ENV LLAMA_PORT=8013
+ENV LLAMA_SERVER_BIN=/app/llama-server
+ENV MODELS_DIR=/models
+ENV TERM=xterm-256color
+
+VOLUME ["/models"]
+
+EXPOSE 8012
+
+ENTRYPOINT ["/usr/bin/tini", "--", "/app/docker-entrypoint.sh"]
