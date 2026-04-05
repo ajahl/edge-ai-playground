@@ -1,0 +1,13 @@
+{
+  "name": "terminal-llama-cpp-llm",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node tui.mjs",
+    "check": "node --check tui.mjs"
+  },
+  "dependencies": {
+    "blessed": "^0.1.81"
+  }
+}
