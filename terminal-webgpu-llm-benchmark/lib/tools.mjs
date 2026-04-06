@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import process from "node:process";
 
 const execFileAsync = promisify(execFile);
 
@@ -37,6 +38,21 @@ export const tools = {
     },
     async run(input) {
       return String(input?.text || "");
+    },
+  },
+  workspace_cwd: {
+    description: "Return the current working directory for this benchmark process.",
+    inputSchema: {},
+    async run() {
+      return process.cwd();
+    },
+  },
+  workspace_files: {
+    description: "List files and directories in the current working directory.",
+    inputSchema: {},
+    async run() {
+      const { stdout } = await runCommand("ls", ["-1"]);
+      return stdout ? stdout.split("\n").filter(Boolean) : [];
     },
   },
 };

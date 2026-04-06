@@ -55,6 +55,51 @@ function validateModelsAndTime(result) {
   };
 }
 
+function validateMiniCodingAgentPattern(result) {
+  const cwdCall = findToolCall(result, "workspace_cwd");
+  const filesCall = findToolCall(result, "workspace_files");
+  const cwdValue = typeof cwdCall?.result === "string" ? cwdCall.result : "";
+  const filesValue = Array.isArray(filesCall?.result) ? filesCall.result : [];
+  const answer = String(result?.answer || "");
+
+  const cwdLine = cwdValue ? `cwd: ${cwdValue}` : "";
+  const entriesLine = `entries: ${filesValue.length}`;
+  const summaryLine = "pattern: observed workspace before final answer";
+
+  const checks = [
+    {
+      name: "used_workspace_cwd",
+      passed: Boolean(cwdCall),
+      details: cwdCall ? `tool used at step ${cwdCall.step}` : "workspace_cwd was not used",
+    },
+    {
+      name: "used_workspace_files",
+      passed: Boolean(filesCall),
+      details: filesCall ? `tool used at step ${filesCall.step}` : "workspace_files was not used",
+    },
+    {
+      name: "reported_exact_cwd",
+      passed: Boolean(cwdLine) && answer.includes(cwdLine),
+      details: cwdLine || "no cwd result available",
+    },
+    {
+      name: "reported_entry_count",
+      passed: answer.includes(entriesLine),
+      details: entriesLine,
+    },
+    {
+      name: "reported_pattern_summary",
+      passed: answer.includes(summaryLine),
+      details: summaryLine,
+    },
+  ];
+
+  return {
+    passed: checks.every((check) => check.passed),
+    checks,
+  };
+}
+
 export const benchmarkCases = [
   {
     id: "direct_hello",
@@ -68,6 +113,13 @@ export const benchmarkCases = [
       "Use tools to get the available models and the current local time. Then return a final answer with exactly these lines: model_count: <count> and time_observed: <exact time string>.",
     description: "Validated multi-step workflow using list_models and current_time.",
     validate: validateModelsAndTime,
+  },
+  {
+    id: "mini_coding_agent_pattern",
+    prompt:
+      "Follow a mini coding agent style loop. First observe the workspace with tools instead of guessing. Use the workspace_cwd and workspace_files tools, then return a final answer with exactly these three lines: cwd: <exact cwd string>, entries: <number of items returned by workspace_files>, and pattern: observed workspace before final answer.",
+    description: "Validated repo-observation workflow inspired by rasbt/mini-coding-agent.",
+    validate: validateMiniCodingAgentPattern,
   },
 ];
 

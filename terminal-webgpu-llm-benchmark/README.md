@@ -299,6 +299,11 @@ Each case includes:
 - Validation rules to check answer correctness
 - Expected outputs
 
+Current built-in cases:
+- `direct_hello` - direct-answer sanity check
+- `models_and_time_validated` - validated multi-tool workflow with model listing and local time
+- `mini_coding_agent_pattern` - validated workspace-observation loop inspired by `rasbt/mini-coding-agent`
+
 ## Examples
 
 ### Run a Single Benchmark
@@ -310,7 +315,7 @@ pnpm start -- "Count the models available"
 ### Run a Benchmark Case Multiple Times
 
 ```bash
-pnpm start -- --case hello --runs 3
+pnpm start -- --case mini_coding_agent_pattern --runs 3
 ```
 
 ### Benchmark Different Models
