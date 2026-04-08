@@ -303,6 +303,7 @@ Current built-in cases:
 - `direct_hello` - direct-answer sanity check
 - `models_and_time_validated` - validated multi-tool workflow with model listing and local time
 - `mini_coding_agent_pattern` - validated workspace-observation loop inspired by `rasbt/mini-coding-agent`
+- `local_agent_loop_inspection` - validated multi-tool run that explicitly uses the local minimal agent loop
 
 ## Examples
 
@@ -316,6 +317,10 @@ pnpm start -- "Count the models available"
 
 ```bash
 pnpm start -- --case mini_coding_agent_pattern --runs 3
+```
+
+```bash
+pnpm start -- --case local_agent_loop_inspection --runs 3
 ```
 
 ### Benchmark Different Models

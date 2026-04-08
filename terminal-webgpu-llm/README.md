@@ -97,7 +97,7 @@ docker run --rm -it \
   -e GPU_WRAPPER=virtualgl \
   terminal-webgpu-llm
 ```
-
+Pass NVIDIA graphicscards: 
 ```bash
 docker run --rm -it \ 
   -p 5179:5179 \
