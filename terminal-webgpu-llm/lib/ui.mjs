@@ -37,6 +37,7 @@ export function createUIController(ui, getSnapshot) {
   const focusables = [ui.transcript, ui.status, ui.performance, ui.input];
   let focusIndex = 2;
   let currentState = "starting";
+  let transcriptShouldFollow = true;
 
   function summarizeState(state) {
     const value = String(state || "").toLowerCase();
@@ -133,12 +134,18 @@ export function createUIController(ui, getSnapshot) {
   }
 
   function syncTranscript() {
+    const previousScroll = ui.transcript.getScrollPerc();
+    transcriptShouldFollow = transcriptShouldFollow || previousScroll >= 95;
     ui.transcript.setContent(
       transcriptEntries
         .map((entry) => entry.render())
         .join("\n"),
     );
-    ui.transcript.setScrollPerc(100);
+    if (transcriptShouldFollow) {
+      ui.transcript.setScrollPerc(100);
+    } else {
+      ui.transcript.setScrollPerc(previousScroll);
+    }
     ui.screen.render();
   }
 
@@ -219,6 +226,10 @@ export function createUIController(ui, getSnapshot) {
     setFocusedView(focusIndex + delta);
   }
 
+  function setTranscriptFollow(shouldFollow) {
+    transcriptShouldFollow = shouldFollow;
+  }
+
   ui.screen.on("resize", () => {
     syncTranscript();
     renderStatus(currentState);
@@ -240,6 +251,7 @@ export function createUIController(ui, getSnapshot) {
     formatPrimaryTranscriptEntry,
     setFocusedView,
     moveFocus,
+    setTranscriptFollow,
     getCurrentState,
     screen: ui.screen,
     transcript: ui.transcript,

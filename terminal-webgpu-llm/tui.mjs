@@ -70,6 +70,7 @@ const {
   formatPrimaryTranscriptEntry,
   setFocusedView,
   moveFocus,
+  setTranscriptFollow,
 } = createUIController(ui, () => ({
   currentModel,
   knownModelsCount: knownModels.length,
@@ -1010,6 +1011,7 @@ screen.key(["up"], () => {
     return;
   }
   if (screen.focused === transcript) {
+    setTranscriptFollow(false);
     transcript.scroll(-3);
     screen.render();
     return;
@@ -1028,6 +1030,9 @@ screen.key(["up"], () => {
 screen.key(["down"], () => {
   if (screen.focused === transcript) {
     transcript.scroll(3);
+    if (transcript.getScrollPerc() >= 95) {
+      setTranscriptFollow(true);
+    }
     screen.render();
     return;
   }
