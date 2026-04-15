@@ -28,6 +28,7 @@
             pkgs.nodejs_24
             pkgs.pnpm
             pkgs.git
+            pkgs.ripgrep
             pkgs.cmake
             pkgs.clang
             pkgs.pkg-config
@@ -36,7 +37,7 @@
 
           # shellHook = (oldAttrs.shellHook or "") + ''
           shellHook = ''
-            colima start
+            colima start --cpu 8 --memory 24
             export LANG=en_US.UTF-8
             export PLAYWRIGHT_BROWSERS_PATH="${pkgs.playwright-driver.browsers}"
             export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
@@ -54,9 +55,31 @@
               source "$OSH/oh-my-bash.sh"
             fi
 
+            export EMSDK="$(pwd)/emsdk"
+            if [ ! -d "$EMSDK" ]; then
+              echo "Warning: ./emsdk is missing."
+              echo "Clone it with: git clone https://github.com/emscripten-core/emsdk.git ./emsdk"
+            elif [ ! -x "$EMSDK/upstream/emscripten/emcc" ]; then
+              echo "Warning: emsdk exists but Emscripten is not installed/activated yet."
+              echo "Run:"
+              echo "  cd ./emsdk"
+              echo "  ./emsdk install 3.1.56"
+              echo "  ./emsdk activate 3.1.56"
+              echo "  source emsdk_env.sh"
+            elif [ -f "$EMSDK/emsdk_env.sh" ]; then
+              source "$EMSDK/emsdk_env.sh" >/dev/null 2>&1
+            else
+              echo "Warning: ./emsdk/emsdk_env.sh not found."
+            fi
+
             echo ">>>>>>>>>>>> Web GPU LLM dev shell activated <<<<<<<<<<<<<<"
             docker --version
             echo "Node: $(node -v)"
+            if command -v emcc >/dev/null 2>&1; then
+              echo "Emscripten: $(emcc --version | head -n 1)"
+            else
+              echo "Warning: emcc is not available in this shell."
+            fi
             echo "Playwright browsers: $PLAYWRIGHT_BROWSERS_PATH"
             echo "Playwright executable: $PLAYWRIGHT_LAUNCH_OPTIONS_EXECUTABLE_PATH"
             pnpm install ws
