@@ -25,6 +25,28 @@ pnpm build
 pnpm start
 ```
 
+## Local web-llm Development
+
+This subproject can use the local [web-llm](web-llm) checkout instead of the published npm package.
+
+If you change the local `web-llm` source, install and build it first:
+
+```bash
+cd web-llm
+pnpm install
+npm run build
+```
+
+Then reinstall and rebuild the TUI project so it picks up the local package output:
+
+```bash
+cd terminal-webgpu-llm
+pnpm install
+pnpm build
+```
+
+If `web-llm` build fails with missing Rollup plugins such as `@rollup/plugin-typescript`, it usually means the local `web-llm` checkout has not had its dependencies installed yet.
+
 Optional:
 
 ```bash
@@ -35,6 +57,33 @@ Startup with an explicit model id:
 
 ```bash
 pnpm start -- Qwen2.5-Coder-3B-Instruct-q4f16_1-MLC
+```
+
+## Loading Models From webllm-model-server
+
+If [webllm-model-server](webllm-model-server) is running on `http://127.0.0.1:8090`, the TUI will add its served Gemma model to the known model list automatically during model refresh/startup.
+
+Start the model server first:
+
+```bash
+cd webllm-model-server
+pnpm start
+```
+
+Then start the TUI:
+
+```bash
+cd terminal-webgpu-llm
+pnpm build
+pnpm start
+```
+
+In the TUI:
+
+```text
+/models
+/model gemma-4-E2B-it-q4f16_1-MLC
+/load
 ```
 
 ## Docker
