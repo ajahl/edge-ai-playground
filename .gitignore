@@ -2,6 +2,7 @@ node_modules
 .chrome-profile
 dist
 .parcel-cache
+artifacts
 
 pnpm-lock.yaml
 flake.lock
