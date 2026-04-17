@@ -7,7 +7,7 @@ declare global {
       payload?: unknown;
     }) => void;
     tuiRendererReady?: boolean;
-    tuiLoad?: (payload?: { model?: string }) => Promise<{
+    tuiLoad?: (payload?: { model?: string; modelId?: string; source?: string }) => Promise<{
       ok: boolean;
       loaded: boolean;
       model: string;

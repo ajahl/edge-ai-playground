@@ -9,7 +9,7 @@
     "start": "node tui.mjs"
   },
   "dependencies": {
-    "@mlc-ai/web-llm": "0.2.82",
+    "@mlc-ai/web-llm": "file:../web-llm",
     "blessed": "^0.1.81",
     "playwright-core": "^1.57.0"
   },

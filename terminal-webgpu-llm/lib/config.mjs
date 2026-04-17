@@ -15,6 +15,8 @@ export const startupModelArg = cliArgs.find((arg) => arg && !arg.startsWith("--"
 
 export const rendererListenPort = exposeRenderer ? Number(process.env.PORT || 5178) : 0;
 export const apiPort = Number(process.env.API_PORT || 5179);
+export const webllmModelServerUrl = (process.env.WEBLLM_MODEL_SERVER_URL || "http://127.0.0.1:8090").replace(/\/$/, "");
+export const webllmModelLibUrlPrefix = process.env.WEBLLM_MODEL_LIB_URL_PREFIX || "";
 
 export const builtInModels = [
   "Qwen2.5-Coder-3B-Instruct-q4f32_1-MLC",

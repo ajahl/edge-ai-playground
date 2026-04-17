@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { execFile } from "node:child_process";
+import blessed from "blessed";
 import { chromium } from "playwright-core";
 import {
   apiPort,
@@ -16,6 +17,8 @@ import {
   mimeTypes,
   rendererListenPort,
   startupModel,
+  webllmModelLibUrlPrefix,
+  webllmModelServerUrl,
 } from "./lib/config.mjs";
 import {
   buildChatCompletionChunk,
@@ -40,6 +43,7 @@ const history = [];
 let attachedUrlContext = null;
 let knownModels = [...builtInModels];
 let huggingFaceModels = [];
+let localServerModels = [];
 const pendingStreams = new Map();
 let rendererPort = rendererListenPort;
 let modelsRefreshPromise = null;
@@ -48,6 +52,11 @@ let pasteInProgress = false;
 let lastPasteEndedAt = 0;
 let lastPromptInputAt = 0;
 let pendingSubmitTimer = null;
+let modelPicker = null;
+let modelPickerList = null;
+let modelPickerIndexToModel = [];
+let modelPickerPreviousFocus = null;
+let promptInputOnFocusBeforePicker = true;
 const chromiumHeadless = process.env.CHROMIUM_HEADLESS !== "false";
 
 const PASTE_SUBMIT_GUARD_MS = 250;
@@ -72,7 +81,7 @@ const {
   moveFocus,
   setTranscriptFollow,
 } = createUIController(ui, () => ({
-  currentModel,
+  currentModel: getModelDisplay(currentModel),
   knownModelsCount: knownModels.length,
   attachedUrlTitle: attachedUrlContext?.title ?? null,
   apiPort,
@@ -82,6 +91,270 @@ const {
   builtInModelsCount: builtInModels.length,
   huggingFaceModelsCount: huggingFaceModels.length,
 }));
+
+const MODEL_SOURCE = {
+  BUILTIN: "built-in",
+  LOCAL: "local-webllm-model-server",
+  HUGGINGFACE: "huggingface",
+};
+
+const MODEL_SOURCE_SHORT = {
+  [MODEL_SOURCE.BUILTIN]: "built-in",
+  [MODEL_SOURCE.LOCAL]: "local",
+  [MODEL_SOURCE.HUGGINGFACE]: "hf",
+};
+
+let modelRegistry = new Map();
+let builtInModelKeys = [];
+
+function makeModelKey(source, modelId) {
+  return `${source}::${modelId}`;
+}
+
+function createModelMeta(source, modelId) {
+  const key = makeModelKey(source, modelId);
+  return {
+    key,
+    source,
+    modelId,
+    display: `${modelId} [${MODEL_SOURCE_SHORT[source] || source}]`,
+  };
+}
+
+function rebuildModelRegistry() {
+  const registry = new Map();
+  builtInModelKeys = builtInModels.map((modelId) => {
+    const meta = createModelMeta(MODEL_SOURCE.BUILTIN, modelId);
+    registry.set(meta.key, meta);
+    return meta.key;
+  });
+
+  localServerModels = localServerModels.map((entry) => {
+    const meta = typeof entry === "string" && entry.includes("::")
+      ? modelRegistry.get(entry) || createModelMeta(MODEL_SOURCE.LOCAL, entry.split("::").slice(1).join("::"))
+      : createModelMeta(MODEL_SOURCE.LOCAL, entry);
+    registry.set(meta.key, meta);
+    return meta.key;
+  });
+
+  huggingFaceModels = huggingFaceModels.map((entry) => {
+    const meta = typeof entry === "string" && entry.includes("::")
+      ? modelRegistry.get(entry) || createModelMeta(MODEL_SOURCE.HUGGINGFACE, entry.split("::").slice(1).join("::"))
+      : createModelMeta(MODEL_SOURCE.HUGGINGFACE, entry);
+    registry.set(meta.key, meta);
+    return meta.key;
+  });
+
+  knownModels = [...builtInModelKeys, ...localServerModels, ...huggingFaceModels];
+  modelRegistry = registry;
+  if (!modelRegistry.has(currentModel)) {
+    currentModel = makeModelKey(MODEL_SOURCE.BUILTIN, defaultModel);
+  }
+}
+
+function getModelMeta(modelKey) {
+  return modelRegistry.get(modelKey) ?? null;
+}
+
+function getModelDisplay(modelKey) {
+  return getModelMeta(modelKey)?.display || modelKey;
+}
+
+function resolveModelSelection(input) {
+  const requested = String(input || "").trim();
+  if (!requested) {
+    return currentModel;
+  }
+  if (modelRegistry.has(requested)) {
+    return requested;
+  }
+
+  const matches = Array.from(modelRegistry.values()).filter((meta) => meta.modelId === requested);
+  if (matches.length === 1) {
+    return matches[0].key;
+  }
+  if (matches.length > 1) {
+    const options = matches.map((meta) => meta.display).join(", ");
+    throw new Error(`Model "${requested}" exists in multiple sources. Use /models and select one: ${options}`);
+  }
+  return requested;
+}
+
+rebuildModelRegistry();
+
+function isModelPickerOpen() {
+  return Boolean(modelPicker);
+}
+
+function buildModelPickerEntries() {
+  const entries = [];
+  const indexToModel = [];
+
+  const pushSection = (title, models) => {
+    entries.push(`{bold}${title}{/bold}`);
+    indexToModel.push(null);
+
+    if (models.length === 0) {
+      entries.push("{gray-fg}  (none){/}");
+      indexToModel.push(null);
+      return;
+    }
+
+    for (const modelKey of models) {
+      const marker = modelKey === currentModel ? "{green-fg}> {/}" : "  ";
+      entries.push(`${marker}${getModelDisplay(modelKey)}`);
+      indexToModel.push(modelKey);
+    }
+  };
+
+  pushSection(`Built-in (${builtInModelKeys.length})`, builtInModelKeys);
+  pushSection(`Local webllm-model-server (${localServerModels.length})`, localServerModels);
+  pushSection(`Hugging Face (${huggingFaceModels.length})`, huggingFaceModels);
+
+  return { entries, indexToModel };
+}
+
+function closeModelPicker(options = {}) {
+  if (!modelPicker) {
+    return;
+  }
+
+  const { restoreFocus = true } = options;
+  modelPicker.detach();
+  modelPicker = null;
+  modelPickerList = null;
+  modelPickerIndexToModel = [];
+  screen.grabKeys = false;
+  input.options.inputOnFocus = promptInputOnFocusBeforePicker;
+
+  if (restoreFocus && modelPickerPreviousFocus && typeof modelPickerPreviousFocus.focus === "function") {
+    modelPickerPreviousFocus.focus();
+  }
+  modelPickerPreviousFocus = null;
+  screen.render();
+}
+
+function moveModelPickerSelection(direction) {
+  if (!modelPickerList) {
+    return;
+  }
+
+  let index = modelPickerList.selected;
+  if (typeof index !== "number") {
+    index = 0;
+  }
+  let nextIndex = index;
+
+  while (true) {
+    nextIndex += direction;
+    if (nextIndex < 0 || nextIndex >= modelPickerIndexToModel.length) {
+      return;
+    }
+    if (modelPickerIndexToModel[nextIndex]) {
+      modelPickerList.select(nextIndex);
+      screen.render();
+      return;
+    }
+  }
+}
+
+function confirmModelPickerSelection() {
+  if (!modelPickerList) {
+    return;
+  }
+  const selectedIndex = typeof modelPickerList.selected === "number" ? modelPickerList.selected : -1;
+  const selectedModel = selectedIndex >= 0 ? modelPickerIndexToModel[selectedIndex] : null;
+  if (!selectedModel) {
+    return;
+  }
+  currentModel = selectedModel;
+  closeModelPicker();
+  logLine("system", `selected model: ${getModelDisplay(currentModel)}`);
+  renderStatus(`selected ${getModelDisplay(currentModel)}`);
+}
+
+function openModelPicker() {
+  if (isModelPickerOpen()) {
+    return;
+  }
+
+  const { entries, indexToModel } = buildModelPickerEntries();
+  modelPickerIndexToModel = indexToModel;
+  modelPickerPreviousFocus = screen.focused ?? input;
+  promptInputOnFocusBeforePicker = Boolean(input.options.inputOnFocus);
+  input.options.inputOnFocus = false;
+  if (typeof input.blur === "function") {
+    input.blur();
+  }
+  screen.grabKeys = true;
+
+  const modal = blessed.box({
+    parent: screen,
+    top: "center",
+    left: "center",
+    width: "78%",
+    height: "78%",
+    label: " Select Model ",
+    border: "line",
+    tags: true,
+    keys: true,
+    mouse: true,
+    vi: true,
+    padding: { top: 1, bottom: 1, left: 1, right: 1 },
+    style: {
+      border: { fg: "cyan" },
+      bg: "black",
+    },
+  });
+
+  blessed.text({
+    parent: modal,
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 1,
+    tags: true,
+    content: "Use w/s to scroll, Enter to select, Esc to close",
+    style: { fg: "gray" },
+  });
+
+  const list = blessed.list({
+    parent: modal,
+    top: 2,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    keys: true,
+    mouse: true,
+    vi: true,
+    tags: true,
+    scrollable: true,
+    alwaysScroll: true,
+    style: {
+      selected: {
+        bg: "blue",
+        fg: "white",
+        bold: true,
+      },
+      item: {
+        fg: "white",
+      },
+    },
+    items: entries,
+  });
+
+  const firstSelectableIndex = indexToModel.findIndex((value) => typeof value === "string");
+  list.select(firstSelectableIndex >= 0 ? firstSelectableIndex : 0);
+
+  modal.key(["escape", "q"], () => {
+    closeModelPicker();
+  });
+
+  modelPicker = modal;
+  modelPickerList = list;
+  list.focus();
+  screen.render();
+}
 
 function json(res, statusCode, payload) {
   res.writeHead(statusCode, {
@@ -305,14 +578,21 @@ async function fetchUrlContextFromTerminal(url) {
   };
 }
 
-async function fetchHuggingFaceModels() {
-  const [hfResponse, binaryResponse] = await Promise.all([
-    fetch("https://huggingface.co/api/models?author=mlc-ai&limit=200&sort=lastModified&direction=-1"),
-    fetch("https://api.github.com/repos/mlc-ai/binary-mlc-llm-libs/contents/web-llm-models/v0_2_80"),
-  ]);
+const HUGGINGFACE_MODEL_AUTHORS = ["mlc-ai", "welcoma"];
+const BINARY_LIBS_API_URL = "https://api.github.com/repos/mlc-ai/binary-mlc-llm-libs/contents/web-llm-models/v0_2_80";
 
-  if (!hfResponse.ok) {
-    throw new Error(`Hugging Face model list failed with ${hfResponse.status}`);
+async function fetchHuggingFaceModels() {
+  const modelResponses = await Promise.all(
+    HUGGINGFACE_MODEL_AUTHORS.map((author) =>
+      fetch(`https://huggingface.co/api/models?author=${author}&limit=200&sort=lastModified&direction=-1`),
+    ),
+  );
+  const binaryResponse = await fetch(BINARY_LIBS_API_URL);
+
+  for (const response of modelResponses) {
+    if (!response.ok) {
+      throw new Error(`Hugging Face model list failed with ${response.status}`);
+    }
   }
   if (!binaryResponse.ok) {
     throw new Error(`Binary lib list failed with ${binaryResponse.status}`);
@@ -320,7 +600,7 @@ async function fetchHuggingFaceModels() {
 
   const normalize = (value) =>
     value
-      .replace(/^mlc-ai\//, "")
+      .replace(/^[^/]+\//, "")
       .replace(/-MLC$/i, "")
       .replace(/-ctx.*$/i, "")
       .replace(/-webgpu$/i, "")
@@ -334,12 +614,53 @@ async function fetchHuggingFaceModels() {
       .map((entry) => normalize(entry.name || "")),
   );
 
-  const payload = await hfResponse.json();
-  return payload
+  const payloads = await Promise.all(modelResponses.map((response) => response.json()));
+  const payload = payloads.flat();
+  const candidateModels = payload
     .map((entry) => entry.id?.trim())
     .filter((id) => Boolean(id) && id.includes("-MLC"))
-    .map((id) => id.replace(/^mlc-ai\//, ""))
-    .filter((id) => availableBinaryKeys.has(normalize(id)));
+    .map((id) => ({
+      repoId: id,
+      modelId: id.replace(/^[^/]+\//, ""),
+      author: id.split("/")[0] || "",
+    }));
+
+  const compatibilityChecks = await Promise.all(
+    candidateModels.map(async ({ author, modelId, repoId }) => {
+      if (author === "mlc-ai") {
+        return availableBinaryKeys.has(normalize(modelId)) ? modelId : null;
+      }
+
+      if (author === "welcoma") {
+        const libsResponse = await fetch(`https://huggingface.co/api/models/${repoId}/tree/main/libs`);
+        if (!libsResponse.ok) {
+          return null;
+        }
+        const libsEntries = await libsResponse.json();
+        const hasWebgpuWasm = Array.isArray(libsEntries)
+          && libsEntries.some((entry) => typeof entry?.path === "string" && entry.path.endsWith("-webgpu.wasm"));
+        return hasWebgpuWasm ? modelId : null;
+      }
+
+      return null;
+    }),
+  );
+
+  return compatibilityChecks.filter(Boolean);
+}
+
+async function fetchWebLLMModelServerModels() {
+  const response = await fetch(`${webllmModelServerUrl}/models`);
+  if (!response.ok) {
+    throw new Error(`WebLLM model server /models failed with ${response.status}`);
+  }
+  const payload = await response.json();
+  if (!Array.isArray(payload?.models)) {
+    return [];
+  }
+  return payload.models
+    .map((entry) => (typeof entry?.id === "string" ? entry.id : null))
+    .filter(Boolean);
 }
 
 function findPlaywrightChromiumExecutable() {
@@ -417,7 +738,14 @@ function serveStatic(res, pathname) {
     ? requestedPath
     : path.join(distDir, "index.html");
 
-  const contents = readFileSync(filePath);
+  let contents = readFileSync(filePath);
+  if (path.basename(filePath) === "index.html") {
+    const html = contents
+      .toString("utf8")
+      .replace("__WEBLLM_MODEL_LIB_URL_PREFIX__", webllmModelLibUrlPrefix)
+      .replace("__WEBLLM_MODEL_SERVER_URL__", webllmModelServerUrl);
+    contents = Buffer.from(html, "utf8");
+  }
   res.writeHead(200, {
     "Content-Type": mimeTypes[path.extname(filePath).toLowerCase()] || "application/octet-stream",
     "Cache-Control": "no-store",
@@ -454,7 +782,7 @@ const apiServer = http.createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/health") {
       json(res, 200, {
         ok: true,
-        model: currentModel,
+        model: getModelDisplay(currentModel),
         loaded: Boolean(page),
         rendererReady: Boolean(page),
         apiPort,
@@ -465,11 +793,15 @@ const apiServer = http.createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/v1/models") {
       json(res, 200, {
         object: "list",
-        data: knownModels.map((id) => ({
-          id,
+        data: knownModels.map((key) => {
+          const meta = getModelMeta(key);
+          return {
+          id: key,
           object: "model",
-          owned_by: builtInModels.includes(id) ? "built-in" : "huggingface",
-        })),
+          owned_by: meta?.source || "unknown",
+          root: meta?.modelId,
+        };
+        }),
       });
       return;
     }
@@ -477,12 +809,14 @@ const apiServer = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/v1/load") {
       const payload = await readJsonBody(req);
       debugLog("api /v1/load payload", payload);
-      const model = typeof payload.model === "string" && payload.model.trim()
-        ? payload.model.trim()
-        : currentModel;
+      const model = resolveModelSelection(
+        typeof payload.model === "string" && payload.model.trim()
+          ? payload.model.trim()
+          : currentModel,
+      );
       await ensureBrowser();
       await loadModel(model);
-      json(res, 200, { ok: true, model, loaded: true });
+      json(res, 200, { ok: true, model, display: getModelDisplay(model), loaded: true });
       return;
     }
 
@@ -644,9 +978,9 @@ async function ensureBrowser() {
       return;
     }
     if (event.type === "loaded") {
-      currentModel = event.payload.model;
-      renderStatus(`loaded ${currentModel}`);
-      logLine("system", `model ready: ${currentModel}`);
+      currentModel = typeof event.payload?.model === "string" ? event.payload.model : currentModel;
+      renderStatus(`loaded ${getModelDisplay(currentModel)}`);
+      logLine("system", `model ready: ${getModelDisplay(currentModel)}`);
       return;
     }
     if (event.type === "log") {
@@ -718,10 +1052,15 @@ async function evaluateWithRecovery(callback, payload) {
 
 async function loadModel(model) {
   currentModel = model;
-  renderStatus(`loading ${model}`);
+  const meta = getModelMeta(model);
+  renderStatus(`loading ${getModelDisplay(model)}`);
   await evaluateWithRecovery(
     (request) => window.tuiLoad?.(request),
-    { model },
+    {
+      model,
+      modelId: meta?.modelId || model,
+      source: meta?.source || MODEL_SOURCE.BUILTIN,
+    },
   );
 }
 
@@ -730,8 +1069,8 @@ async function createChatCompletion(requestPayload) {
   const model = currentModel;
   const userPrompt = extractLastUserMessage(requestPayload?.messages);
 
-  renderStatus(`api request ${model}`);
-  logLine("api", `chat request on ${model}`);
+  renderStatus(`api request ${getModelDisplay(model)}`);
+  logLine("api", `chat request on ${getModelDisplay(model)}`);
   if (userPrompt) {
     logLine("user", userPrompt);
   }
@@ -770,8 +1109,8 @@ async function streamChatCompletion(requestPayload, res) {
     Connection: "keep-alive",
   });
 
-  renderStatus(`api stream ${model}`);
-  logLine("api", `stream request on ${model}`);
+  renderStatus(`api stream ${getModelDisplay(model)}`);
+  logLine("api", `stream request on ${getModelDisplay(model)}`);
   if (userPrompt) {
     logLine("user", userPrompt);
   }
@@ -838,7 +1177,16 @@ async function refreshKnownModels() {
       }
       logLine("system", "refreshing Hugging Face models in background...");
       huggingFaceModels = await fetchHuggingFaceModels();
-      knownModels = Array.from(new Set([...builtInModels, ...huggingFaceModels]));
+      localServerModels = [];
+      try {
+        localServerModels = await fetchWebLLMModelServerModels();
+        if (localServerModels.length > 0) {
+          logLine("system", `webllm-model-server available: ${localServerModels.join(", ")}`);
+        }
+      } catch {
+        localServerModels = [];
+      }
+      rebuildModelRegistry();
       logLine("system", `known models updated: ${knownModels.length}`);
       if (!interactionInFlight) {
         renderStatus("ready");
@@ -998,14 +1346,23 @@ screen.key(["C-c", "q"], async () => {
 });
 
 screen.key(["tab"], () => {
+  if (isModelPickerOpen()) {
+    return;
+  }
   moveFocus(1);
 });
 
 screen.key(["S-tab"], () => {
+  if (isModelPickerOpen()) {
+    return;
+  }
   moveFocus(-1);
 });
 
 screen.key(["up"], () => {
+  if (isModelPickerOpen()) {
+    return;
+  }
   if (screen.focused === input) {
     moveFocus(-1);
     return;
@@ -1028,6 +1385,9 @@ screen.key(["up"], () => {
 });
 
 screen.key(["down"], () => {
+  if (isModelPickerOpen()) {
+    return;
+  }
   if (screen.focused === transcript) {
     transcript.scroll(3);
     if (transcript.getScrollPerc() >= 95) {
@@ -1052,11 +1412,45 @@ screen.key(["down"], () => {
 });
 
 screen.key(["left"], () => {
+  if (isModelPickerOpen()) {
+    return;
+  }
   moveFocus(-1);
 });
 
 screen.key(["right"], () => {
+  if (isModelPickerOpen()) {
+    return;
+  }
   moveFocus(1);
+});
+
+screen.key(["enter"], () => {
+  if (!isModelPickerOpen()) {
+    return;
+  }
+  confirmModelPickerSelection();
+});
+
+screen.key(["escape"], () => {
+  if (!isModelPickerOpen()) {
+    return;
+  }
+  closeModelPicker();
+});
+
+screen.key(["w"], () => {
+  if (!isModelPickerOpen()) {
+    return;
+  }
+  moveModelPickerSelection(-1);
+});
+
+screen.key(["s"], () => {
+  if (!isModelPickerOpen()) {
+    return;
+  }
+  moveModelPickerSelection(1);
 });
 
 screen.key(["C-l"], async () => {
@@ -1078,9 +1472,9 @@ async function handlePromptSubmit(rawValue) {
 
   try {
     if (prompt.startsWith("/model ")) {
-      currentModel = prompt.slice(7).trim() || currentModel;
-      logLine("system", `selected model: ${currentModel}`);
-      renderStatus(`selected ${currentModel}`);
+      currentModel = resolveModelSelection(prompt.slice(7).trim() || currentModel);
+      logLine("system", `selected model: ${getModelDisplay(currentModel)}`);
+      renderStatus(`selected ${getModelDisplay(currentModel)}`);
       return;
     }
 
@@ -1095,14 +1489,8 @@ async function handlePromptSubmit(rawValue) {
     }
 
     if (prompt === "/models") {
-      logLine("system", `built-in models (${builtInModels.length}):`);
-      for (const model of builtInModels) {
-        logLine("model", model);
-      }
-      logLine("system", `hugging face models (${huggingFaceModels.length}):`);
-      for (const model of huggingFaceModels) {
-        logLine("model", model);
-      }
+      openModelPicker();
+      renderStatus("selecting model");
       return;
     }
 
@@ -1234,11 +1622,11 @@ async function main() {
   apiServer.listen(apiPort, host);
   await ensureBrowser();
   if (startupModel) {
-    currentModel = startupModel;
+    currentModel = resolveModelSelection(startupModel);
     await loadModel(currentModel);
   } else {
-    currentModel = defaultModel;
-    logLine("system", `selected model: ${currentModel}`);
+    currentModel = makeModelKey(MODEL_SOURCE.BUILTIN, defaultModel);
+    logLine("system", `selected model: ${getModelDisplay(currentModel)}`);
     logLine("system", "no startup model provided; use /load or Ctrl+L to load it.");
   }
   if (exposeRenderer) {

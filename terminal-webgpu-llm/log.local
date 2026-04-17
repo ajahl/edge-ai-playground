@@ -1,0 +1,43 @@
+  ──────────────────────────────────────────────────────────────────────────  
+system selected model: Qwen2.5-Coder-3B-Instruct-q4f32_1-MLC [built-in]
+  ──────────────────────────────────────────────────────────────────────────  
+system no startup model provided; use /load or Ctrl+L to load it.
+  ──────────────────────────────────────────────────────────────────────────  
+system renderer ready on internal-only localhost port
+  ──────────────────────────────────────────────────────────────────────────  
+system api ready on http://127.0.0.1:5179
+  ──────────────────────────────────────────────────────────────────────────  
+system Commands: /models, /refresh-models, /model <id>, /load, /cache, /clear-cache <id>, /clear-chat, /export-transcript [path].
+  ──────────────────────────────────────────────────────────────────────────  
+system refreshing Hugging Face models in background...
+  ──────────────────────────────────────────────────────────────────────────  
+system webllm-model-server available: gemma-4-E2B-it-q4f16_1-MLC, qwen2.5-0.5b-instruct-q4f16_1-MLC
+  ──────────────────────────────────────────────────────────────────────────  
+system known models updated: 57
+  ──────────────────────────────────────────────────────────────────────────  
+system selected model: qwen2.5-0.5b-instruct-q4f16_1-MLC [local]
+  ──────────────────────────────────────────────────────────────────────────  
+system [debug] tuiLoad payload: modelId=qwen2.5-0.5b-instruct-q4f16_1-MLC
+  ──────────────────────────────────────────────────────────────────────────  
+system [debug] ensureLoaded called: modelId=qwen2.5-0.5b-instruct-q4f16_1-MLC | hasEngine=false | loadedModel=null | loadingInFlight=false
+  ──────────────────────────────────────────────────────────────────────────  
+system [debug] webgpu adapter: 
+  ──────────────────────────────────────────────────────────────────────────  
+system [debug] webgpu limits: "maxBufferSize":268435456,"maxStorageBufferBindingSize":134217728,"maxComputeInvocationsPerWorkgroup":256,"maxComputeWorkgroupSizeX":256,"maxComputeWorkgroupSizeY":256,"maxComputeWorkgroupSizeZ":64,"maxComputeWorkgroupsPerDimension":65535
+  ──────────────────────────────────────────────────────────────────────────  
+system [debug] creating engine: modelId=qwen2.5-0.5b-instruct-q4f16_1-MLC
+  ──────────────────────────────────────────────────────────────────────────  
+system Loading model qwen2.5-0.5b-instruct-q4f16_1-MLC [local-webllm-model-server]...
+  ──────────────────────────────────────────────────────────────────────────  
+system [debug] engine.reload start: modelId=qwen2.5-0.5b-instruct-q4f16_1-MLC
+│ error Cannot find global function runtime.TVMTensorAllocWithScope
+│ error page.evaluate: Error: Cannot find global function runtime.TVMTensorAllocWithScope
+    at Ee.getGlobalFuncInternal (http://127.0.0.1:61419/assets/main-nk1_DvPZ.js:49:28689)
+    at ue.getGlobalFuncImpl (http://127.0.0.1:61419/assets/main-nk1_DvPZ.js:49:26810)
+    at ue.get [as tensorEmpty] (http://127.0.0.1:61419/assets/main-nk1_DvPZ.js:49:19861)
+    at Ee.empty (http://127.0.0.1:61419/assets/main-nk1_DvPZ.js:50:309)
+    at http://127.0.0.1:61419/assets/main-nk1_DvPZ.js:49:31928
+    at Ee.withNewScope (http://127.0.0.1:61419/assets/main-nk1_DvPZ.js:49:27543)
+    at Ee.<anonymous> (http://127.0.0.1:61419/assets/main-nk1_DvPZ.js:49:31878)
+    at Generator.next (<anonymous>)
+    at o (http://127.0.0.1:61419/assets/main-nk1_DvPZ.js:2:48748)

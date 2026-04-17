@@ -61,7 +61,7 @@ pnpm start -- Qwen2.5-Coder-3B-Instruct-q4f16_1-MLC
 
 ## Loading Models From webllm-model-server
 
-If [webllm-model-server](webllm-model-server) is running on `http://127.0.0.1:8090`, the TUI will add its served Gemma model to the known model list automatically during model refresh/startup.
+If [webllm-model-server](webllm-model-server) is running on `http://127.0.0.1:8090`, the TUI will discover its locally served models automatically during model refresh/startup.
 
 Start the model server first:
 
@@ -83,6 +83,13 @@ In the TUI:
 ```text
 /models
 /model gemma-4-E2B-it-q4f16_1-MLC
+/load
+```
+
+You can do the same for any model exposed by `GET /models` on the local model server, for example:
+
+```text
+/model qwen2.5-0.5b-instruct-q4f16_1-MLC
 /load
 ```
 

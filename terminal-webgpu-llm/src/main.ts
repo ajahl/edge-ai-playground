@@ -1,4 +1,5 @@
 import * as webllm from "@mlc-ai/web-llm";
+import { ensureModelInAppConfig, getAppConfig } from "./app-config";
 import { AVAILABLE_MODELS, DEFAULT_MODEL } from "./index";
 
 let engine: webllm.MLCEngineInterface | null = null;
@@ -187,9 +188,11 @@ async function logWebGPUDiagnostics() {
   }
 }
 
-async function ensureLoaded(modelId = DEFAULT_MODEL) {
+async function ensureLoaded(modelKey = DEFAULT_MODEL, modelId = modelKey, modelSource = "built-in") {
   debug("ensureLoaded called", {
     modelId,
+    modelKey,
+    modelSource,
     hasEngine: Boolean(engine),
     loadedModel,
     loadingInFlight: Boolean(loadPromise),
@@ -201,11 +204,12 @@ async function ensureLoaded(modelId = DEFAULT_MODEL) {
   loadPromise = (async () => {
     if (!engine) {
       await logWebGPUDiagnostics();
-      debug("creating engine", { modelId });
+      debug("creating engine", { modelId, modelKey, modelSource });
       engine = new webllm.MLCEngine({
+        appConfig: getAppConfig(),
         initProgressCallback(report) {
           emit("progress", {
-            model: modelId,
+            model: modelKey,
             progress: report.progress,
             text: report.text,
           });
@@ -213,13 +217,18 @@ async function ensureLoaded(modelId = DEFAULT_MODEL) {
       });
     }
 
-    if (loadedModel !== modelId) {
-      emit("log", `Loading model ${modelId}...`);
-      debug("engine.reload start", { modelId });
-      await engine.reload(modelId);
-      loadedModel = modelId;
-      debug("engine.reload done", { modelId });
-      emit("loaded", { model: modelId });
+    if (loadedModel !== modelKey) {
+      const registeredModel = await ensureModelInAppConfig(modelKey, modelSource, modelId);
+      if (!registeredModel) {
+        throw new Error(`Model ${modelId} (${modelSource}) was not found in the current app config or local model server`);
+      }
+      engine.setAppConfig(getAppConfig());
+      emit("log", `Loading model ${modelId} [${modelSource}]...`);
+      debug("engine.reload start", { modelId, modelKey, modelSource });
+      await engine.reload(modelKey);
+      loadedModel = modelKey;
+      debug("engine.reload done", { modelId, modelKey, modelSource });
+      emit("loaded", { model: modelKey, modelId, source: modelSource });
     }
   })().catch((error) => {
     emit("error", error instanceof Error ? error.message : String(error));
@@ -236,6 +245,11 @@ async function inspectCache(knownModels: string[]) {
     return { totalBytes: 0, cachedModels: [] };
   }
 
+  const cacheLookupModels = knownModels.map((model) => {
+    const separatorIndex = model.indexOf("::");
+    return separatorIndex >= 0 ? model.slice(separatorIndex + 2) : model;
+  });
+
   const cacheNames = ["webllm/model", "webllm/config", "webllm/wasm"];
   const perModelBytes = new Map();
   let totalBytes = 0;
@@ -245,7 +259,7 @@ async function inspectCache(knownModels: string[]) {
     const requests = await cache.keys();
 
     for (const request of requests) {
-      const matchedModel = knownModels.find((model) => request.url.includes(model)) ?? null;
+      const matchedModel = cacheLookupModels.find((model) => request.url.includes(model)) ?? null;
       const response = await cache.match(request);
       if (!response) {
         continue;
@@ -268,13 +282,15 @@ async function inspectCache(knownModels: string[]) {
 }
 
 window.tuiLoad = async (payload) => {
-  const modelId = typeof payload?.model === "string" ? payload.model : DEFAULT_MODEL;
-  debug("tuiLoad payload", { modelId });
-  await ensureLoaded(modelId);
+  const modelKey = typeof payload?.model === "string" ? payload.model : DEFAULT_MODEL;
+  const modelId = typeof payload?.modelId === "string" ? payload.modelId : modelKey;
+  const modelSource = typeof payload?.source === "string" ? payload.source : "built-in";
+  debug("tuiLoad payload", { modelKey, modelId, modelSource });
+  await ensureLoaded(modelKey, modelId, modelSource);
   return {
     ok: true,
     loaded: true,
-    model: modelId,
+    model: modelKey,
   };
 };
 

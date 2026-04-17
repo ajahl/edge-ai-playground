@@ -6,6 +6,10 @@
     <title>Terminal WebGPU LLM TUI Renderer</title>
     <script>
       webLLMGlobal = {};
+      webLLMGlobal.modelLibURLPrefix = "__WEBLLM_MODEL_LIB_URL_PREFIX__";
+      webLLMGlobal.modelServerUrl = "__WEBLLM_MODEL_SERVER_URL__";
+      globalThis.__WEBLLM_MODEL_LIB_URL_PREFIX__ = webLLMGlobal.modelLibURLPrefix || undefined;
+      globalThis.__WEBLLM_MODEL_SERVER_URL__ = webLLMGlobal.modelServerUrl || undefined;
     </script>
   </head>
   <body>
