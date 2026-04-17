@@ -2,6 +2,14 @@ import * as webllm from "@mlc-ai/web-llm";
 import { ensureModelInAppConfig, getAppConfig } from "./app-config";
 import { AVAILABLE_MODELS, DEFAULT_MODEL } from "./index";
 
+const MODEL_SOURCE = {
+  BUILTIN: "built-in",
+  LOCAL: "local-webllm-model-server",
+  HUGGINGFACE: "huggingface",
+} as const;
+
+const KNOWN_MODEL_SOURCES = new Set<string>(Object.values(MODEL_SOURCE));
+
 let engine: webllm.MLCEngineInterface | null = null;
 let loadPromise: Promise<void> | null = null;
 let loadedModel: string | null = null;
@@ -138,6 +146,39 @@ function debug(label: string, payload?: unknown) {
     return;
   }
   emit("log", `[debug] ${label}: ${formatDebugPayload(payload)}`);
+}
+
+function resolveModelRequest(payload: { model?: unknown; modelId?: unknown; source?: unknown } | undefined) {
+  const modelKey =
+    typeof payload?.model === "string" && payload.model.trim()
+      ? payload.model.trim()
+      : DEFAULT_MODEL;
+
+  let modelId =
+    typeof payload?.modelId === "string" && payload.modelId.trim()
+      ? payload.modelId.trim()
+      : modelKey;
+
+  let modelSource =
+    typeof payload?.source === "string" && payload.source.trim()
+      ? payload.source.trim()
+      : MODEL_SOURCE.BUILTIN;
+
+  const separatorIndex = modelKey.indexOf("::");
+  if (separatorIndex >= 0) {
+    const inferredSource = modelKey.slice(0, separatorIndex);
+    const inferredModelId = modelKey.slice(separatorIndex + 2);
+    if (KNOWN_MODEL_SOURCES.has(inferredSource)) {
+      if (!(typeof payload?.source === "string" && payload.source.trim())) {
+        modelSource = inferredSource;
+      }
+      if (!(typeof payload?.modelId === "string" && payload.modelId.trim())) {
+        modelId = inferredModelId;
+      }
+    }
+  }
+
+  return { modelKey, modelId, modelSource };
 }
 
 async function logWebGPUDiagnostics() {
@@ -282,9 +323,7 @@ async function inspectCache(knownModels: string[]) {
 }
 
 window.tuiLoad = async (payload) => {
-  const modelKey = typeof payload?.model === "string" ? payload.model : DEFAULT_MODEL;
-  const modelId = typeof payload?.modelId === "string" ? payload.modelId : modelKey;
-  const modelSource = typeof payload?.source === "string" ? payload.source : "built-in";
+  const { modelKey, modelId, modelSource } = resolveModelRequest(payload);
   debug("tuiLoad payload", { modelKey, modelId, modelSource });
   await ensureLoaded(modelKey, modelId, modelSource);
   return {
@@ -295,9 +334,9 @@ window.tuiLoad = async (payload) => {
 };
 
 window.tuiChat = async (payload) => {
-  const modelId = typeof payload.model === "string" ? payload.model : DEFAULT_MODEL;
-  debug("tuiChat payload", summarizeChatPayload({ ...payload, model: modelId }));
-  await ensureLoaded(modelId);
+  const { modelKey, modelId, modelSource } = resolveModelRequest(payload);
+  debug("tuiChat payload", summarizeChatPayload({ ...payload, model: modelKey }));
+  await ensureLoaded(modelKey, modelId, modelSource);
 
   if (!engine) {
     throw new Error("Engine failed to initialize.");
@@ -320,13 +359,13 @@ window.tuiChat = async (payload) => {
 };
 
 window.tuiChatStream = async (payload) => {
-  const modelId = typeof payload?.model === "string" ? payload.model : DEFAULT_MODEL;
+  const { modelKey, modelId, modelSource } = resolveModelRequest(payload);
   const requestId = typeof payload?.requestId === "string" ? payload.requestId : crypto.randomUUID();
   debug("tuiChatStream payload", {
-    ...summarizeChatPayload({ ...payload, model: modelId, stream: true }),
+    ...summarizeChatPayload({ ...payload, model: modelKey, stream: true }),
     requestId,
   });
-  await ensureLoaded(modelId);
+  await ensureLoaded(modelKey, modelId, modelSource);
 
   if (!engine) {
     throw new Error("Engine failed to initialize.");
@@ -401,13 +440,13 @@ window.tuiListCachedModels = async (payload) => {
 };
 
 window.tuiClearModel = async (payload) => {
-  const modelId = typeof payload?.model === "string" ? payload.model : DEFAULT_MODEL;
-  await webllm.deleteModelAllInfoInCache(modelId);
-  if (loadedModel === modelId && engine) {
+  const { modelKey } = resolveModelRequest(payload);
+  await webllm.deleteModelAllInfoInCache(modelKey);
+  if (loadedModel === modelKey && engine) {
     await engine.unload();
     loadedModel = null;
   }
-  return { ok: true, model: modelId };
+  return { ok: true, model: modelKey };
 };
 
 emit("ready", { model: DEFAULT_MODEL });
