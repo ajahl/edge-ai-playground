@@ -4,11 +4,11 @@ This subproject serves converted MLC/WebLLM model packages over HTTP so [termina
 
 By default it serves the packaged models stored in:
 
-- [mlc-models](/Volumes/DevArea/machine-learning/edge-ai-playground/mlc-models)
+- [`../mlc-models`](../mlc-models)
 
 It reads:
 
-- [index.json](/Volumes/DevArea/machine-learning/edge-ai-playground/mlc-models/index.json)
+- [`../mlc-models/index.json`](../mlc-models/index.json)
 
 and exposes each model under its own base path.
 
