@@ -2,6 +2,21 @@ function findToolCall(result, toolName) {
   return result?.trace?.toolCalls?.find((entry) => entry.tool === toolName) || null;
 }
 
+function usedFallback(result) {
+  return Boolean(result?.trace?.toolCalls?.some((entry) => entry.fallback));
+}
+
+function fallbackCheck(result) {
+  const fallback = usedFallback(result);
+  return {
+    name: "model_completed_without_fallback",
+    passed: !fallback,
+    details: fallback
+      ? "fallback tools were used after invalid model protocol"
+      : "model completed the benchmark path",
+  };
+}
+
 function validateHello(result) {
   const passed = typeof result.answer === "string" && result.answer.trim().length > 0;
   return {
@@ -24,6 +39,7 @@ function validateModelsAndTime(result) {
   const answer = String(result?.answer || "");
 
   const checks = [
+    fallbackCheck(result),
     {
       name: "used_list_models",
       passed: Boolean(modelCall),
@@ -67,6 +83,7 @@ function validateMiniCodingAgentPattern(result) {
   const summaryLine = "pattern: observed workspace before final answer";
 
   const checks = [
+    fallbackCheck(result),
     {
       name: "used_workspace_cwd",
       passed: Boolean(cwdCall),
@@ -110,6 +127,7 @@ function validateLocalAgentLoopInspection(result) {
   const answer = String(result?.answer || "");
 
   const checks = [
+    fallbackCheck(result),
     {
       name: "used_list_models",
       passed: Boolean(modelCall),
@@ -156,6 +174,7 @@ function validateLocalAgentLoopInspection(result) {
 export const benchmarkCases = [
   {
     id: "direct_hello",
+    mode: "direct",
     prompt: "Say hello in one short sentence.",
     description: "Direct answer without tool use.",
     validate: validateHello,

@@ -1,9 +1,47 @@
 import { TerminalWebgpuApiClient } from "./lib/api-client.mjs";
-import { runAgentLoop } from "./lib/agent-loop.mjs";
+import { COMPACT_SYSTEM_PROMPT, runAgentLoop } from "./lib/agent-loop.mjs";
 import { benchmarkCases, getBenchmarkCase } from "./lib/benchmarks.mjs";
 import { TerminalUI, UILogger, SummaryLogger, SilentLogger, FileLogger, CombinedLogger } from "./lib/terminal-ui.mjs";
 
 const ui = new TerminalUI();
+const GEMMA4_MODEL_RE = /(^|::)gemma-4-/i;
+
+function getAgentSystemPrompt(model) {
+  return GEMMA4_MODEL_RE.test(String(model || "")) ? COMPACT_SYSTEM_PROMPT : undefined;
+}
+
+function getToolDescriptionMode(model) {
+  if (!GEMMA4_MODEL_RE.test(String(model || ""))) {
+    return "json";
+  }
+  return process.env.GEMMA4_TOOL_DESCRIPTION_MODE === "names" ? "names" : "json";
+}
+
+function getGenerationConfig(model, { maxTokens = 128 } = {}) {
+  return {
+    max_tokens: maxTokens,
+    temperature: GEMMA4_MODEL_RE.test(String(model || "")) ? 0.4 : 0,
+  };
+}
+
+function getActiveModelHint(api, health) {
+  return api.model || health?.model || "";
+}
+
+function getFallbackToolPlan(model, caseData) {
+  if (!GEMMA4_MODEL_RE.test(String(model || "")) || caseData?.id !== "models_and_time_validated") {
+    return null;
+  }
+  return {
+    tools: ["list_models", "current_time"],
+    reasoning: "Gemma4 returned invalid agent protocol; used the required observed tool results",
+    buildAnswer(toolResults) {
+      const modelCount = Array.isArray(toolResults.list_models) ? toolResults.list_models.length : 0;
+      const timeObserved = String(toolResults.current_time || "");
+      return `model_count: ${modelCount}\ntime_observed: ${timeObserved}`;
+    },
+  };
+}
 
 function parseArgs(args) {
   const options = {
@@ -14,6 +52,8 @@ function parseArgs(args) {
     verbose: false,
     silent: false,
     logFile: null,
+    smoke: false,
+    smokePrompt: "Reply with exactly: hello",
   };
 
   const free = [];
@@ -36,6 +76,15 @@ function parseArgs(args) {
     }
     if (value === "--list-cases") {
       options.listCases = true;
+      continue;
+    }
+    if (value === "--smoke") {
+      options.smoke = true;
+      continue;
+    }
+    if (value === "--smoke-prompt") {
+      options.smokePrompt = args[index + 1] || options.smokePrompt;
+      index += 1;
       continue;
     }
     if (value === "--no-interactive") {
@@ -67,7 +116,8 @@ function displayCases() {
   ui.blank();
 
   benchmarkCases.forEach((entry, index) => {
-    console.log(`  ${ui.colors.bright}${index + 1}. ${entry.id}${ui.colors.reset}`);
+    const mode = entry.mode || "agent";
+    console.log(`  ${ui.colors.bright}${index + 1}. ${entry.id}${ui.colors.reset} ${ui.colors.dim}[${mode}]${ui.colors.reset}`);
     console.log(`     ${ui.colors.dim}${entry.prompt}${ui.colors.reset}`);
     console.log();
   });
@@ -106,11 +156,101 @@ function createLogger(verbose = false, silent = false, logFile = null) {
   return { logger, actualLogFile };
 }
 
+function extractChatText(completion) {
+  return (
+    completion?.choices?.[0]?.message?.content ||
+    completion?.choices?.[0]?.text ||
+    ""
+  );
+}
+
+async function runDirectChat({ api, userPrompt, generationConfig, logger = console }) {
+  const startedAt = Date.now();
+  logger.log("direct chat: generating");
+  const completion = await api.chat(
+    [
+      {
+        role: "user",
+        content: userPrompt,
+      },
+    ],
+    generationConfig || getGenerationConfig(api.model, { maxTokens: 128 }),
+  );
+  const answer = extractChatText(completion).trim();
+
+  return {
+    type: "direct",
+    step: 1,
+    answer,
+    reasoning: "direct /v1/chat/completions request",
+    elapsedMs: Date.now() - startedAt,
+    trace: {
+      rawReplies: [{ step: 1, raw: answer }],
+      toolCalls: [],
+    },
+  };
+}
+
+async function runSmokeTest(options) {
+  const { logger, actualLogFile } = createLogger(options.verbose, options.silent, options.logFile);
+  const api = new TerminalWebgpuApiClient({ model: options.model, logger });
+  const startedAt = Date.now();
+
+  try {
+    console.log(`api: ${api.baseUrl}`);
+    if (actualLogFile) {
+      console.log(`logging to: ${actualLogFile}`);
+    }
+
+    const health = await api.health();
+    console.log(`health: ${health.ok ? "ok" : "not ok"} | loaded: ${health.loaded ? "yes" : "no"}`);
+
+    const models = await api.models();
+    const modelIds = models?.data?.map((entry) => entry.id).filter(Boolean) || [];
+    console.log(`models: ${modelIds.length}`);
+
+    if (options.model) {
+      console.log(`loading model: ${options.model}`);
+      await api.load(options.model);
+      console.log("load: ok");
+    } else {
+      console.log("load: skipped (no --model provided)");
+    }
+
+    const prompt = options.smokePrompt;
+    console.log(`chat prompt: ${prompt}`);
+    const completion = await api.chat(
+      [
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+      {
+        ...getGenerationConfig(options.model, { maxTokens: 64 }),
+      },
+    );
+
+    const text = extractChatText(completion).trim();
+    if (!text) {
+      throw new Error("Smoke chat returned empty text.");
+    }
+
+    console.log("\nsmoke response:\n");
+    console.log(text);
+    console.log(`\nsmoke: passed in ${Date.now() - startedAt}ms`);
+  } finally {
+    if (logger.close) {
+      await logger.close();
+    }
+  }
+}
+
 async function selectBenchmarkCase() {
   ui.section("Select a Benchmark Case");
   console.log();
   benchmarkCases.forEach((entry, i) => {
-    console.log(`  ${ui.colors.bright}${i + 1}${ui.colors.reset}. ${entry.id}`);
+    console.log(`  ${ui.colors.bright}${i + 1}${ui.colors.reset}. ${entry.id} ${ui.colors.dim}[${entry.mode || "agent"}]${ui.colors.reset}`);
     console.log(`     ${ui.colors.dim}${entry.prompt}${ui.colors.reset}\n`);
   });
   console.log(`  ${ui.colors.bright}0${ui.colors.reset}. Custom prompt\n`);
@@ -166,17 +306,26 @@ async function selectModel(api) {
 async function runBenchmarkRun(api, prompt, caseData, runNumber, totalRuns, verbose = false, silent = false, logFile = null) {
   ui.section(`Run ${runNumber}/${totalRuns}`);
   console.log(`${ui.colors.dim}Prompt: ${prompt}${ui.colors.reset}\n`);
+  console.log(`${ui.colors.dim}Mode: ${caseData?.mode || "agent"}${ui.colors.reset}\n`);
 
   const { logger, actualLogFile } = createLogger(verbose, silent, logFile);
   if (actualLogFile && runNumber === 1) {
     console.log(`${ui.colors.dim}Logging to: ${actualLogFile}${ui.colors.reset}\n`);
   }
+  const generationConfig = getGenerationConfig(api.model);
 
-  const result = await runAgentLoop({
-    api,
-    userPrompt: prompt,
-    logger,
-  });
+  const result =
+    caseData?.mode === "direct"
+      ? await runDirectChat({ api, userPrompt: prompt, generationConfig, logger })
+      : await runAgentLoop({
+          api,
+          userPrompt: prompt,
+          systemPrompt: getAgentSystemPrompt(api.model),
+          toolDescriptionMode: getToolDescriptionMode(api.model),
+          generationConfig,
+          fallbackToolPlan: getFallbackToolPlan(api.model, caseData),
+          logger,
+        });
 
   ui.agentFinal(result.answer, result.reasoning);
 
@@ -350,6 +499,18 @@ async function nonInteractiveMode(options) {
 
     console.log(`benchmark prompt: ${options.prompt}`);
     console.log(`runs: ${options.runs}`);
+    const caseData = options.caseId ? getBenchmarkCase(options.caseId) : null;
+    const activeModelHint = getActiveModelHint(api, health);
+    const agentSystemPrompt = getAgentSystemPrompt(activeModelHint);
+    const toolDescriptionMode = getToolDescriptionMode(activeModelHint);
+    const generationConfig = getGenerationConfig(activeModelHint);
+    const fallbackToolPlan = getFallbackToolPlan(activeModelHint, caseData);
+    console.log(`mode: ${caseData?.mode || "agent"}`);
+    if (caseData?.mode !== "direct") {
+      console.log(`agent prompt: ${agentSystemPrompt ? "compact-gemma4" : "default"}`);
+      console.log(`tool descriptions: ${toolDescriptionMode}`);
+      console.log(`temperature: ${generationConfig.temperature}`);
+    }
     if (apiLogFile) {
       console.log(`logging to: ${apiLogFile}`);
     }
@@ -358,11 +519,18 @@ async function nonInteractiveMode(options) {
     for (let run = 1; run <= options.runs; run += 1) {
       console.log(`\n=== run ${run}/${options.runs} ===`);
       const { logger: agentLogger } = createLogger(options.verbose, options.silent, options.logFile);
-      const result = await runAgentLoop({
-        api,
-        userPrompt: options.prompt,
-        logger: agentLogger,
-      });
+      const result =
+        caseData?.mode === "direct"
+          ? await runDirectChat({ api, userPrompt: options.prompt, generationConfig, logger: agentLogger })
+          : await runAgentLoop({
+              api,
+              userPrompt: options.prompt,
+              systemPrompt: agentSystemPrompt,
+              toolDescriptionMode,
+              generationConfig,
+              fallbackToolPlan,
+              logger: agentLogger,
+            });
       if (agentLogger.close) {
         await agentLogger.close();
       }
@@ -371,6 +539,12 @@ async function nonInteractiveMode(options) {
       console.log(result.answer);
       if (result.reasoning) {
         console.log(`\nsummary: ${result.reasoning}`);
+      }
+      if (caseData?.validate) {
+        const validation = caseData.validate(result);
+        result.validation = validation;
+        console.log("\nvalidation:\n");
+        console.log(JSON.stringify(validation, null, 2));
       }
       console.log(`\nmetrics: ${JSON.stringify({ step: result.step, elapsedMs: result.elapsedMs }, null, 2)}`);
     }
@@ -458,6 +632,11 @@ async function main() {
     return;
   }
 
+  if (options.smoke) {
+    await runSmokeTest(options);
+    return;
+  }
+
   // Check if we have all required info for CLI mode
   const selectedCase = options.caseId ? getBenchmarkCase(options.caseId) : null;
   const prompt = selectedCase?.prompt || options.prompt;
@@ -467,6 +646,7 @@ async function main() {
     // CLI mode with arguments
     if (!prompt) {
       console.error("Usage: pnpm start -- [--model MODEL_ID] [--runs N] [--case CASE_ID] [--verbose] [--silent] [--log-file FILE] \"your task here\"");
+      console.error("       pnpm start -- --smoke [--model MODEL_ID] [--smoke-prompt PROMPT]");
       console.error("       pnpm start -- --list-cases");
       console.error("       pnpm start -- [--no-interactive] [--verbose] [--silent] [--log-file FILE]");
       process.exit(1);

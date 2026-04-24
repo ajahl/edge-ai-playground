@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node cli.mjs",
     "agent": "node agent.mjs",
-    "benchmark": "node cli.mjs --no-interactive"
+    "benchmark": "node cli.mjs --no-interactive",
+    "gemma4:probes": "node gemma4-minimal-probes.mjs"
   },
   "dependencies": {
     "ws": "^8.20.0"

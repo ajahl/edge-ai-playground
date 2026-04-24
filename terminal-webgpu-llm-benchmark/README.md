@@ -130,6 +130,18 @@ pnpm start -- --log-file debug.log
 pnpm start -- --verbose --log-file debug.log
 ```
 
+### API Smoke Test
+
+Run a compatibility check that does not use the agent JSON protocol:
+
+```bash
+pnpm start -- --smoke \
+  --model "local-webllm-model-server::qwen2.5-0.5b-instruct-q4f16_1-MLC"
+```
+
+This checks `/health`, `/v1/models`, optionally calls `/v1/load` when `--model`
+is provided, then sends one direct `/v1/chat/completions` request.
+
 ### CLI Mode
 
 Run non-interactively with a prompt:
@@ -139,10 +151,14 @@ Run non-interactively with a prompt:
 pnpm start -- "What is 2 + 2?"
 
 # With model selection
-pnpm start -- --model "Qwen2.5-Coder-3B-Instruct-q4f16_1-MLC" "Your prompt here"
+pnpm start -- --model "local-webllm-model-server::qwen2.5-0.5b-instruct-q4f16_1-MLC" "Your prompt here"
 
 # With benchmark case
-pnpm start -- --case hello "Task prompt"
+pnpm start -- --case direct_hello "Task prompt"
+
+# Direct-chat benchmark case without the agent JSON protocol
+pnpm start -- --case direct_hello \
+  --model "local-webllm-model-server::qwen2.5-0.5b-instruct-q4f16_1-MLC"
 
 # Multiple runs
 pnpm start -- --runs 5 "Your prompt"
@@ -150,6 +166,11 @@ pnpm start -- --runs 5 "Your prompt"
 # With all options
 pnpm start -- --verbose --log-file results.log --runs 3 "Your prompt"
 ```
+
+Use source-qualified model ids such as
+`local-webllm-model-server::qwen2.5-0.5b-instruct-q4f16_1-MLC` when selecting
+models; unqualified ids can be ambiguous when the same model exists in multiple
+sources.
 
 ### List Available Cases
 
@@ -161,10 +182,12 @@ pnpm start -- --list-cases
 
 | Option | Short | Description | Example |
 |--------|-------|-------------|---------|
-| `--model` | - | Model ID to use | `--model "Qwen2.5-Coder-3B-Instruct-q4f16_1-MLC"` |
+| `--model` | - | Model ID to use | `--model "local-webllm-model-server::qwen2.5-0.5b-instruct-q4f16_1-MLC"` |
 | `--runs` | - | Number of benchmark runs | `--runs 5` |
-| `--case` | - | Benchmark case ID | `--case hello` |
+| `--case` | - | Benchmark case ID | `--case direct_hello` |
 | `--list-cases` | - | Show available cases | `--list-cases` |
+| `--smoke` | - | Run API smoke test without the agent loop | `--smoke` |
+| `--smoke-prompt` | - | Prompt for the smoke chat request | `--smoke-prompt "Say hello"` |
 | `--verbose` | `-v` | Show full debug output | `--verbose` |
 | `--silent` | `-s` | Suppress debug output | `--silent` |
 | `--log-file` | - | Save debug log to file | `--log-file debug.log` |
@@ -284,7 +307,7 @@ Benchmark Results
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `TERMINAL_WEBGPU_LLM_API_URL` | API endpoint | `http://127.0.0.1:5179` |
-| `MODEL` | Default model | `Qwen2.5-Coder-3B-Instruct-q4f16_1-MLC` |
+| `MODEL` | Default model | `local-webllm-model-server::qwen2.5-0.5b-instruct-q4f16_1-MLC` |
 
 ## Benchmark Cases
 
@@ -326,8 +349,47 @@ pnpm start -- --case local_agent_loop_inspection --runs 3
 ### Benchmark Different Models
 
 ```bash
-pnpm start -- --model "Llama-3.2-1B-Instruct-q4f16_1-MLC" --runs 2 "Your task"
+pnpm start -- --model "local-webllm-model-server::qwen2.5-0.5b-instruct-q4f16_1-MLC" --runs 2 "Your task"
 ```
+
+### Gemma4 Local Check
+
+With `webllm-model-server` running and `terminal-webgpu-llm` pointed at it, use
+Gemma4's source-qualified local model id:
+
+```bash
+export TERMINAL_WEBGPU_LLM_API_URL="http://127.0.0.1:5179"
+export GEMMA4_MODEL="local-webllm-model-server::gemma-4-E2B-it-q4f16_1-MLC"
+
+pnpm start -- --smoke \
+  --model "$GEMMA4_MODEL" \
+  --smoke-prompt "Reply with exactly: hello"
+
+pnpm start -- --case direct_hello \
+  --model "$GEMMA4_MODEL" \
+  --runs 1
+
+pnpm start -- --case models_and_time_validated \
+  --model "$GEMMA4_MODEL" \
+  --runs 1
+```
+
+The smoke and direct-chat checks validate the plain chat path first. The agent
+case is the current Gemma4 stress check because it exercises a longer
+system/user prompt and the local agent protocol. If Gemma4 returns malformed
+agent-protocol text for `models_and_time_validated`, the benchmark records that
+raw failure and uses a Gemma4-only fallback to run the required `list_models`
+and `current_time` tools so the validated case can still complete.
+
+To bypass the benchmark loop and isolate raw chat payload behavior, run:
+
+```bash
+TERMINAL_WEBGPU_LLM_API_URL="http://127.0.0.1:5179" \
+  pnpm run gemma4:probes
+```
+
+This sends one-message, two-message, repeated-system, tools-only, and full
+agent-system `/v1/chat/completions` probes against the loaded Gemma4 model.
 
 ### Performance Testing with Full Logging
 
