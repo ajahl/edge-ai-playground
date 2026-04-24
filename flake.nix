@@ -32,6 +32,7 @@
             pkgs.cmake
             pkgs.clang
             pkgs.pkg-config
+            pkgs.python311
             pkgs.playwright-driver.browsers
           ];
 
@@ -83,6 +84,7 @@
             echo "Playwright browsers: $PLAYWRIGHT_BROWSERS_PATH"
             echo "Playwright executable: $PLAYWRIGHT_LAUNCH_OPTIONS_EXECUTABLE_PATH"
             pnpm install ws
+            source .venv/bin/activate
           '';
         });
       });
