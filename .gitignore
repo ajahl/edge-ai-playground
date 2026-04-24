@@ -4,6 +4,7 @@ dist
 .parcel-cache
 artifacts
 .vscode
+.venv
 examples
 
 pnpm-lock.yaml
