@@ -210,6 +210,14 @@ const server = http.createServer((req, res) => {
         config: entry.configUrl,
         libs: entry.libs,
         packageDir: entry.packageDir,
+        model_type: entry.model_type,
+        buffer_size_required_bytes: entry.buffer_size_required_bytes,
+        max_tensor_cache_shard_bytes: entry.max_tensor_cache_shard_bytes,
+        max_tensor_cache_record_bytes: entry.max_tensor_cache_record_bytes,
+        segmented_embedding_candidate: entry.segmented_embedding_candidate,
+        segmented_embedding_plan: entry.segmented_embedding_plan,
+        runtime_supported: entry.runtime_supported,
+        runtime_support_notes: entry.runtime_support_notes,
       })),
     });
     return;
