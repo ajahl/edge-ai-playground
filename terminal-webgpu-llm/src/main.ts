@@ -86,7 +86,12 @@ function formatMessagesSummary(messages: ReturnType<typeof summarizeMessages>) {
     return "messages=0";
   }
   return messages
-    .map((message) => `${message.index}:${message.role}[${message.chars}] "${message.preview.replace(/\s+/g, " ")}"`)
+    .map((message) => {
+      const preview = message.preview
+        .replace(/\r/g, "\\r")
+        .replace(/\n/g, "\\n");
+      return `${message.index}:${message.role}[${message.chars}] "${preview}"`;
+    })
     .join(" | ");
 }
 

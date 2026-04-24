@@ -121,6 +121,22 @@ function createModelMeta(source, modelId) {
   };
 }
 
+function inferModelMetaFromKey(modelKey) {
+  if (typeof modelKey !== "string") {
+    return null;
+  }
+  const separatorIndex = modelKey.indexOf("::");
+  if (separatorIndex < 0) {
+    return null;
+  }
+  const source = modelKey.slice(0, separatorIndex);
+  const modelId = modelKey.slice(separatorIndex + 2);
+  if (!MODEL_SOURCE_SHORT[source] || !modelId) {
+    return null;
+  }
+  return createModelMeta(source, modelId);
+}
+
 function rebuildModelRegistry() {
   const registry = new Map();
   builtInModelKeys = builtInModels.map((modelId) => {
@@ -153,7 +169,7 @@ function rebuildModelRegistry() {
 }
 
 function getModelMeta(modelKey) {
-  return modelRegistry.get(modelKey) ?? null;
+  return modelRegistry.get(modelKey) ?? inferModelMetaFromKey(modelKey);
 }
 
 function getModelDisplay(modelKey) {
@@ -491,6 +507,70 @@ function compactPayload(payload) {
   }
 }
 
+function extractMessageText(message) {
+  if (typeof message?.content === "string") {
+    return message.content;
+  }
+  if (Array.isArray(message?.content)) {
+    return message.content
+      .map((part) => (typeof part?.text === "string" ? part.text : ""))
+      .filter(Boolean)
+      .join("\n");
+  }
+  return "";
+}
+
+function isGemma4Model(model) {
+  return /(^|::)gemma-4-/i.test(String(model || ""));
+}
+
+function toGemma4Role(role) {
+  return role === "assistant" ? "model" : role || "user";
+}
+
+function formatGemma4Prompt(messages) {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return "(no messages)";
+  }
+
+  const rendered = messages
+    .map((message) => {
+      const role = toGemma4Role(message?.role);
+      return `<|turn>${role}\n${extractMessageText(message)}<turn|>`;
+    })
+    .join("\n");
+  return `${rendered}\n<|turn>model\n`;
+}
+
+function formatOpenAiMessages(messages) {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return "(no messages)";
+  }
+  return messages
+    .map((message, index) => {
+      const role = typeof message?.role === "string" ? message.role : "unknown";
+      const content = extractMessageText(message);
+      return `[${index}] ${role} (${content.length} chars)\n${content}`;
+    })
+    .join("\n\n");
+}
+
+function logGemma4Prompt(model, messages) {
+  if (!isGemma4Model(model)) {
+    return;
+  }
+  logLine(
+    "debug",
+    [
+      "Gemma4 OpenAI messages:",
+      formatOpenAiMessages(messages),
+      "",
+      "Gemma4 rendered prompt:",
+      formatGemma4Prompt(messages),
+    ].join("\n"),
+  );
+}
+
 function exportTranscript(targetPath = "") {
   const transcriptText = exportTranscriptText();
   const safeTimestamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -553,6 +633,25 @@ function buildResponsesPayload(payload) {
     tool_choice: payload?.tool_choice,
     response_format: payload?.text?.format ?? payload?.response_format,
   };
+}
+
+function isGrammarConstrainedResponseFormat(responseFormat) {
+  return (
+    responseFormat?.type === "json_object" ||
+    responseFormat?.type === "grammar" ||
+    responseFormat?.type === "structural_tag"
+  );
+}
+
+function rejectUnsupportedResponseFormat(res, responseFormat) {
+  json(res, 501, {
+    error: {
+      message:
+        "Grammar-constrained response_format is currently disabled in terminal-webgpu-llm because the local WebLLM runtime can replace the renderer context during grammar initialization.",
+      type: "unsupported_response_format",
+      response_format: responseFormat,
+    },
+  });
 }
 
 async function fetchUrlContextFromTerminal(url) {
@@ -831,6 +930,10 @@ const apiServer = http.createServer(async (req, res) => {
         temperature: payload?.temperature,
         max_tokens: payload?.max_tokens,
       });
+      if (isGrammarConstrainedResponseFormat(payload?.response_format)) {
+        rejectUnsupportedResponseFormat(res, payload.response_format);
+        return;
+      }
       if (payload.stream === true) {
         await streamChatCompletion(payload, res);
         return;
@@ -850,6 +953,10 @@ const apiServer = http.createServer(async (req, res) => {
         messageCount: Array.isArray(chatPayload?.messages) ? chatPayload.messages.length : 0,
         response_format: chatPayload?.response_format,
       });
+      if (isGrammarConstrainedResponseFormat(chatPayload?.response_format)) {
+        rejectUnsupportedResponseFormat(res, chatPayload.response_format);
+        return;
+      }
 
       if (chatPayload.stream === true) {
         res.writeHead(200, {
@@ -1071,6 +1178,7 @@ async function createChatCompletion(requestPayload) {
 
   renderStatus(`api request ${getModelDisplay(model)}`);
   logLine("api", `chat request on ${getModelDisplay(model)}`);
+  logGemma4Prompt(model, requestPayload?.messages);
   if (userPrompt) {
     logLine("user", userPrompt);
   }
@@ -1111,6 +1219,7 @@ async function streamChatCompletion(requestPayload, res) {
 
   renderStatus(`api stream ${getModelDisplay(model)}`);
   logLine("api", `stream request on ${getModelDisplay(model)}`);
+  logGemma4Prompt(model, requestPayload?.messages);
   if (userPrompt) {
     logLine("user", userPrompt);
   }

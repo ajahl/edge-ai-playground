@@ -29,6 +29,9 @@ pnpm start
 
 This subproject can use the local [web-llm](web-llm) checkout instead of the published npm package.
 
+For current TUI-specific debugging and follow-up work, see
+[`WORKING_TASKS.md`](./WORKING_TASKS.md).
+
 If you change the local `web-llm` source, install and build it first:
 
 ```bash
@@ -61,7 +64,7 @@ pnpm start -- Qwen2.5-Coder-3B-Instruct-q4f16_1-MLC
 
 ## Loading Models From webllm-model-server
 
-If [webllm-model-server](webllm-model-server) is running on `http://127.0.0.1:8090`, the TUI will discover its locally served models automatically during model refresh/startup.
+If [`../webllm-model-server`](../webllm-model-server) is running on `http://127.0.0.1:8090`, the TUI will discover its locally served models automatically during model refresh/startup.
 
 Start the model server first:
 
@@ -70,7 +73,7 @@ cd webllm-model-server
 pnpm start
 ```
 
-Then start the TUI:
+Then start the TUI in another terminal:
 
 ```bash
 cd terminal-webgpu-llm
@@ -82,16 +85,22 @@ In the TUI:
 
 ```text
 /models
-/model gemma-4-E2B-it-q4f16_1-MLC
+/model local-webllm-model-server::qwen2.5-0.5b-instruct-q4f16_1-MLC
 /load
 ```
 
 You can do the same for any model exposed by `GET /models` on the local model server, for example:
 
 ```text
-/model qwen2.5-0.5b-instruct-q4f16_1-MLC
+/model local-webllm-model-server::gemma-4-E2B-it-q4f16_1-MLC
 /load
 ```
+
+Gemma4 status:
+
+- `gemma-4-*` packages are experimental but expected to load when they are built with the patched local [`../mlc-llm`](../mlc-llm) checkout.
+- The tested local model id is `local-webllm-model-server::gemma-4-E2B-it-q4f16_1-MLC`.
+- If a model id exists in more than one source, use the source-qualified id shown by `/models`.
 
 ## Docker
 
